@@ -722,9 +722,40 @@ const LEADERBOARD_SCRIPT_URL =
 
 const TIME_SCORING_CONFIG = {
   MAX_TIME_BONUS: 200,
-  FULL_TIME_BONUS_SECONDS: 20, // 20 seconds for full 200 time bonus points
+  FULL_TIME_BONUS_SECONDS: 10, // 10 seconds for full 200 time bonus points
   NO_TIME_BONUS_AFTER_SECONDS: 90, // 90 seconds; beyond this, 0 time bonus points
 };
+
+const AUDIO_PREFS_STORAGE_KEY_MUSIC = 'orbitoys_music_enabled';
+const AUDIO_PREFS_STORAGE_KEY_SFX = 'orbitoys_sfx_enabled';
+
+/**
+ * Load saved audio preferences from localStorage
+ */
+function loadSavedAudioPreferences() {
+  try {
+    const savedMusic = window.localStorage?.getItem(AUDIO_PREFS_STORAGE_KEY_MUSIC);
+    const savedSfx = window.localStorage?.getItem(AUDIO_PREFS_STORAGE_KEY_SFX);
+    return {
+      musicEnabled: savedMusic !== null ? savedMusic === 'true' : true,
+      sfxEnabled: savedSfx !== null ? savedSfx === 'true' : true,
+    };
+  } catch {
+    return { musicEnabled: true, sfxEnabled: true };
+  }
+}
+
+/**
+ * Persist audio preferences to localStorage
+ */
+function saveAudioPreferences(musicEnabled, sfxEnabled) {
+  try {
+    window.localStorage?.setItem(AUDIO_PREFS_STORAGE_KEY_MUSIC, String(Boolean(musicEnabled)));
+    window.localStorage?.setItem(AUDIO_PREFS_STORAGE_KEY_SFX, String(Boolean(sfxEnabled)));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
 
 /**
  * HTML Escaping helper to sanitize user-provided text before displaying
@@ -1320,10 +1351,11 @@ const state = {
   lastNasaThumbTrigger: null,
   roverWasPlayingBeforePhoto: false,
   isMissionPreviewOpen: false,
+  isSettingsOpen: false,
   entranceTimer: null,
-  musicEnabled: true,
+  musicEnabled: loadSavedAudioPreferences().musicEnabled,
   musicStarted: false,
-  sfxEnabled: true,
+  sfxEnabled: loadSavedAudioPreferences().sfxEnabled,
   bestRoverScore: loadBestMissionScore(),
   roverGame: {
     phase: 'briefing', // 'briefing' | 'playing' | 'paused' | 'completed'
@@ -1331,6 +1363,7 @@ const state = {
     baseScore: 0,
     timeBonus: 0,
     finalScore: 0,
+    isEarlyEnd: false,
     playerName: loadSavedExplorerName(),
     scoreSubmitted: false,
     cachedLeaderboard: [],
@@ -1480,9 +1513,10 @@ const audioSystem = (() => {
       fadeInterval = null;
     }
 
-    // If music is currently paused, turn it ON and play immediately
-    if (audio.paused) {
+    // If music is currently paused or disabled, turn it ON and play immediately
+    if (audio.paused || !state.musicEnabled) {
       state.musicEnabled = true;
+      saveAudioPreferences(state.musicEnabled, state.sfxEnabled);
       startMusicWithFade();
       updateAudioControlsUI();
       return;
@@ -1491,11 +1525,27 @@ const audioSystem = (() => {
     // Otherwise pause playback and mark Music Off
     state.musicEnabled = false;
     audio.pause();
+    saveAudioPreferences(state.musicEnabled, state.sfxEnabled);
     updateAudioControlsUI();
   }
 
   function toggleSfx() {
     state.sfxEnabled = !state.sfxEnabled;
+    saveAudioPreferences(state.musicEnabled, state.sfxEnabled);
+    if (state.sfxEnabled) {
+      playClick();
+    }
+    updateAudioControlsUI();
+  }
+
+  function setMusic(enable) {
+    if (Boolean(enable) === state.musicEnabled) return;
+    toggleMusic();
+  }
+
+  function setSfx(enable) {
+    state.sfxEnabled = Boolean(enable);
+    saveAudioPreferences(state.musicEnabled, state.sfxEnabled);
     if (state.sfxEnabled) {
       playClick();
     }
@@ -1723,6 +1773,8 @@ const audioSystem = (() => {
     startMusicWithFade,
     toggleMusic,
     toggleSfx,
+    setMusic,
+    setSfx,
     isPlaying,
     playClick,
     playHover,
@@ -1737,24 +1789,86 @@ const audioSystem = (() => {
 })();
 
 function updateAudioControlsUI() {
+  const musicPlaying = state.musicEnabled && audioSystem.isPlaying();
+
+  // 1. Persistent audio dock buttons (#btn-toggle-music, #btn-toggle-sfx)
   const musicBtn = document.querySelector('#btn-toggle-music');
   const sfxBtn = document.querySelector('#btn-toggle-sfx');
-  if (!musicBtn || !sfxBtn) return;
+  if (musicBtn) {
+    musicBtn.setAttribute('aria-pressed', musicPlaying ? 'true' : 'false');
+    musicBtn.classList.toggle('is-muted', !musicPlaying);
+    const musicLabel = musicBtn.querySelector('.audio-pill__label');
+    if (musicLabel) musicLabel.textContent = musicPlaying ? 'Music On' : 'Music Off';
+    musicBtn.setAttribute('title', musicPlaying ? 'Music: ON (Click to mute)' : 'Music: OFF (Click to unmute)');
+    musicBtn.setAttribute('aria-label', musicPlaying ? 'Background music (On)' : 'Background music (Off)');
+  }
+  if (sfxBtn) {
+    sfxBtn.setAttribute('aria-pressed', state.sfxEnabled ? 'true' : 'false');
+    sfxBtn.classList.toggle('is-muted', !state.sfxEnabled);
+    const sfxLabel = sfxBtn.querySelector('.audio-pill__label');
+    if (sfxLabel) sfxLabel.textContent = state.sfxEnabled ? 'SFX On' : 'SFX Off';
+    sfxBtn.setAttribute('title', state.sfxEnabled ? 'Sound effects: ON (Click to mute)' : 'Sound effects: OFF (Click to unmute)');
+    sfxBtn.setAttribute('aria-label', state.sfxEnabled ? 'Sound effects (On)' : 'Sound effects (Off)');
+  }
 
-  const musicPlaying = state.musicEnabled && audioSystem.isPlaying();
-  musicBtn.setAttribute('aria-pressed', musicPlaying ? 'true' : 'false');
-  musicBtn.classList.toggle('is-muted', !musicPlaying);
-  const musicLabel = musicBtn.querySelector('.audio-pill__label');
-  if (musicLabel) musicLabel.textContent = musicPlaying ? 'Music On' : 'Music Off';
-  musicBtn.setAttribute('title', musicPlaying ? 'Music: ON (Click to mute)' : 'Music: OFF (Click to unmute)');
-  musicBtn.setAttribute('aria-label', musicPlaying ? 'Background music (On)' : 'Background music (Off)');
+  // 2. Mission Briefing header audio controls (#btn-briefing-music, #btn-briefing-sfx)
+  const briefingMusicBtn = document.querySelector('#btn-briefing-music');
+  const briefingSfxBtn = document.querySelector('#btn-briefing-sfx');
+  if (briefingMusicBtn) {
+    briefingMusicBtn.setAttribute('aria-pressed', musicPlaying ? 'true' : 'false');
+    briefingMusicBtn.classList.toggle('is-muted', !musicPlaying);
+    const lbl = briefingMusicBtn.querySelector('.audio-pill__label');
+    if (lbl) lbl.textContent = musicPlaying ? 'Music On' : 'Music Off';
+    briefingMusicBtn.setAttribute('title', musicPlaying ? 'Music: ON (Click to mute)' : 'Music: OFF (Click to unmute)');
+    briefingMusicBtn.setAttribute('aria-label', musicPlaying ? 'Background music (On)' : 'Background music (Off)');
+  }
+  if (briefingSfxBtn) {
+    briefingSfxBtn.setAttribute('aria-pressed', state.sfxEnabled ? 'true' : 'false');
+    briefingSfxBtn.classList.toggle('is-muted', !state.sfxEnabled);
+    const lbl = briefingSfxBtn.querySelector('.audio-pill__label');
+    if (lbl) lbl.textContent = state.sfxEnabled ? 'SFX On' : 'SFX Off';
+    briefingSfxBtn.setAttribute('title', state.sfxEnabled ? 'Sound effects: ON (Click to mute)' : 'Sound effects: OFF (Click to unmute)');
+    briefingSfxBtn.setAttribute('aria-label', state.sfxEnabled ? 'Sound effects (On)' : 'Sound effects (Off)');
+  }
 
-  sfxBtn.setAttribute('aria-pressed', state.sfxEnabled ? 'true' : 'false');
-  sfxBtn.classList.toggle('is-muted', !state.sfxEnabled);
-  const sfxLabel = sfxBtn.querySelector('.audio-pill__label');
-  if (sfxLabel) sfxLabel.textContent = state.sfxEnabled ? 'SFX On' : 'SFX Off';
-  sfxBtn.setAttribute('title', state.sfxEnabled ? 'Sound effects: ON (Click to mute)' : 'Sound effects: OFF (Click to unmute)');
-  sfxBtn.setAttribute('aria-label', state.sfxEnabled ? 'Sound effects (On)' : 'Sound effects (Off)');
+  // 3. Compact Settings modal switches (#btn-settings-toggle-music, #btn-settings-toggle-sfx)
+  const settingsMusicToggle = document.querySelector('#btn-settings-toggle-music');
+  const settingsSfxToggle = document.querySelector('#btn-settings-toggle-sfx');
+  if (settingsMusicToggle) {
+    const isMusicOn = state.musicEnabled;
+    settingsMusicToggle.setAttribute('aria-checked', isMusicOn ? 'true' : 'false');
+    settingsMusicToggle.classList.toggle('is-on', isMusicOn);
+    const txt = settingsMusicToggle.querySelector('.settings-toggle-text');
+    if (txt) txt.textContent = isMusicOn ? 'ON' : 'OFF';
+  }
+  if (settingsSfxToggle) {
+    const isSfxOn = state.sfxEnabled;
+    settingsSfxToggle.setAttribute('aria-checked', isSfxOn ? 'true' : 'false');
+    settingsSfxToggle.classList.toggle('is-on', isSfxOn);
+    const txt = settingsSfxToggle.querySelector('.settings-toggle-text');
+    if (txt) txt.textContent = isSfxOn ? 'ON' : 'OFF';
+  }
+}
+
+function openSettingsModal() {
+  state.isSettingsOpen = true;
+  const backdrop = document.querySelector('#settings-backdrop');
+  if (backdrop) {
+    backdrop.hidden = false;
+    backdrop.classList.add('is-open');
+  }
+  updateAudioControlsUI();
+  audioSystem.playClick();
+}
+
+function closeSettingsModal() {
+  state.isSettingsOpen = false;
+  const backdrop = document.querySelector('#settings-backdrop');
+  if (backdrop) {
+    backdrop.hidden = true;
+    backdrop.classList.remove('is-open');
+  }
+  audioSystem.playClick();
 }
 
 /**
@@ -2042,16 +2156,29 @@ function buildApp() {
             </div>
             <div class="shelf-header__actions">
               <p class="caption-amber shelf-header__collection">SPACE EXPLORATION COLLECTION</p>
-              <button
-                type="button"
-                class="btn btn--secondary btn--shelf-exit"
-                id="btn-shelf-exit-game"
-                data-sfx-hover="true"
-                aria-label="Exit game and return to title screen"
-              >
-                <span class="btn-arrow-left" aria-hidden="true">←</span>
-                <span>Exit Game</span>
-              </button>
+              <div class="shelf-header__buttons">
+                <button
+                  type="button"
+                  class="btn-settings-gear"
+                  id="btn-shelf-settings"
+                  data-action="open-settings"
+                  data-sfx-hover="true"
+                  aria-label="Open Game Settings"
+                  title="Settings (Music &amp; SFX)"
+                >
+                  <span aria-hidden="true">⚙️</span>
+                </button>
+                <button
+                  type="button"
+                  class="btn btn--secondary btn--shelf-exit"
+                  id="btn-shelf-exit-game"
+                  data-sfx-hover="true"
+                  aria-label="Exit game and return to title screen"
+                >
+                  <span class="btn-arrow-left" aria-hidden="true">←</span>
+                  <span>Exit Game</span>
+                </button>
+              </div>
             </div>
           </header>
 
@@ -2116,6 +2243,17 @@ function buildApp() {
               <p class="caption-amber" id="intro-nav-subtitle">ORBITOYS  /  SPACE EXPLORATION COLLECTION</p>
             </div>
             <div class="collection-nav__action">
+              <button
+                type="button"
+                class="btn-settings-gear"
+                id="btn-discovery-settings"
+                data-action="open-settings"
+                data-sfx-hover="true"
+                aria-label="Open Game Settings"
+                title="Settings (Music &amp; SFX)"
+              >
+                <span aria-hidden="true">⚙️</span>
+              </button>
               <button type="button" class="btn btn--primary" id="btn-discovery-back-shelf" data-sfx-hover="true">
                 <span class="btn-arrow-left" aria-hidden="true">←</span>
                 <span>Back to shelf</span>
@@ -2197,6 +2335,17 @@ function buildApp() {
               <p class="caption-amber" id="interactive-nav-subtitle">INTERACTIVE DISCOVERY  /  APOLLO 15, 16 &amp; 17</p>
             </div>
             <div class="collection-nav__action">
+              <button
+                type="button"
+                class="btn-settings-gear"
+                id="btn-interactive-settings"
+                data-action="open-settings"
+                data-sfx-hover="true"
+                aria-label="Open Game Settings"
+                title="Settings (Music &amp; SFX)"
+              >
+                <span aria-hidden="true">⚙️</span>
+              </button>
               <button type="button" class="btn btn--primary" id="btn-back-to-intro" data-sfx-hover="true">
                 <span class="btn-arrow-left" aria-hidden="true">←</span>
                 <span>Back to introduction</span>
@@ -2337,6 +2486,17 @@ function buildApp() {
               </div>
               <button
                 type="button"
+                class="btn-settings-gear btn-hud-gear"
+                id="btn-rover-hud-settings"
+                data-action="open-settings"
+                data-sfx-hover="true"
+                aria-label="Open Game Settings"
+                title="Settings (Music &amp; SFX)"
+              >
+                <span aria-hidden="true">⚙️</span>
+              </button>
+              <button
+                type="button"
                 class="btn-rover-pause"
                 id="btn-rover-pause"
                 aria-label="Pause Lunar Rover Mission"
@@ -2460,6 +2620,28 @@ function buildApp() {
             <div class="rover-modal-card__top-row">
               <p class="caption-orange">APOLLO 15  /  HADLEY–APENNINE  /  JULY 31, 1971</p>
               <div class="rover-briefing-top-controls">
+                <div class="rover-briefing-audio-dock" id="briefing-audio-dock" aria-label="Audio controls">
+                  <button
+                    type="button"
+                    class="audio-pill audio-pill--briefing"
+                    id="btn-briefing-music"
+                    aria-pressed="true"
+                    title="Background music (Click to toggle)"
+                  >
+                    <span class="audio-pill__icon" aria-hidden="true">🎵</span>
+                    <span class="audio-pill__label" id="btn-briefing-music-label">Music On</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="audio-pill audio-pill--briefing"
+                    id="btn-briefing-sfx"
+                    aria-pressed="true"
+                    title="Sound effects (Click to toggle)"
+                  >
+                    <span class="audio-pill__icon" aria-hidden="true">🔊</span>
+                    <span class="audio-pill__label" id="btn-briefing-sfx-label">SFX On</span>
+                  </button>
+                </div>
                 <button
                   type="button"
                   class="btn-rover-leaderboard-trigger"
@@ -2583,7 +2765,7 @@ function buildApp() {
             <header class="rover-leaderboard-dialog__header">
               <div class="rover-leaderboard-dialog__title-wrap">
                 <p class="caption-orange">APOLLO 15 LUNAR ROVER MISSION</p>
-                <h3 class="heading-md text-plum" id="rover-leaderboard-title">🏆 Top 5 Explorers</h3>
+                <h3 class="heading-md text-plum" id="rover-leaderboard-title">🏆 Top 10 Explorers</h3>
               </div>
               <button
                 type="button"
@@ -2616,27 +2798,57 @@ function buildApp() {
         <!-- OVERLAY 2: PAUSE MENU -->
         <div class="rover-overlay" id="rover-pause-overlay" role="dialog" aria-modal="true" aria-labelledby="rover-pause-title" hidden>
           <div class="rover-modal-card rover-modal-card--compact">
-            <p class="caption-orange">MISSION PAUSED</p>
-            <h2 class="heading-lg text-plum" id="rover-pause-title">Hadley–Apennine Exploration</h2>
-            <p class="body-md text-plum">
-              Rover movement and mission systems are paused. Choose an action below:
-            </p>
-            <div class="rover-pause-actions">
-              <button type="button" class="btn btn--primary" id="btn-rover-resume">
-                <span>Resume Mission</span>
-              </button>
-              <button type="button" class="btn btn--secondary" id="btn-rover-restart">
-                <span>Restart Mission</span>
-              </button>
-              <button type="button" class="btn btn--secondary" id="btn-rover-exit">
-                <span>Exit to Toy Shop</span>
-              </button>
+            <div class="rover-pause-view" id="rover-pause-main-view">
+              <p class="caption-orange">MISSION PAUSED</p>
+              <h2 class="heading-lg text-plum" id="rover-pause-title">Hadley–Apennine Exploration</h2>
+              <p class="body-md text-plum">
+                Rover movement and mission systems are paused. Choose an action below:
+              </p>
+              <div class="rover-pause-actions">
+                <button type="button" class="btn btn--primary" id="btn-rover-resume">
+                  <span>▶ Resume Mission</span>
+                </button>
+                <button type="button" class="btn btn--secondary" id="btn-rover-restart">
+                  <span>⟳ Restart Mission</span>
+                </button>
+                <button type="button" class="btn btn--secondary" id="btn-rover-pause-settings">
+                  <span>⚙️ Settings</span>
+                </button>
+                <button type="button" class="btn btn--secondary btn--rover-end-early" id="btn-rover-end-early">
+                  <span>⏹ End Mission &amp; Submit Score</span>
+                </button>
+                <button type="button" class="btn btn--secondary btn--rover-pause-exit" id="btn-rover-exit">
+                  <span>← Exit to Toy Shop</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Confirmation sub-view for ending mission early -->
+            <div class="rover-pause-view" id="rover-pause-confirm-end-view" hidden>
+              <p class="caption-orange">END MISSION EARLY?</p>
+              <h2 class="heading-lg text-plum">Confirm Early Submission</h2>
+              <div class="rover-early-end-summary">
+                <p class="rover-early-end-score-line">
+                  Current Score: <strong id="rover-early-end-preview-score">0 pts</strong>
+                </p>
+                <p class="rover-early-end-notice">
+                  ⚠️ <strong>Notice:</strong> Unfinished missions do not receive the Safe Return to Lunar Module bonus (+100 pts), Mission Completion bonus (+250 pts), or Speed bonus (up to +200 pts). Only points for completed objectives are awarded and submitted to the leaderboard.
+                </p>
+              </div>
+              <div class="rover-pause-actions rover-pause-actions--confirm">
+                <button type="button" class="btn btn--primary" id="btn-rover-confirm-end">
+                  <span>Confirm &amp; Submit Score</span>
+                </button>
+                <button type="button" class="btn btn--secondary" id="btn-rover-cancel-end">
+                  <span>Cancel &amp; Continue Mission</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- OVERLAY 3: MISSION COMPLETE & RESULTS DEBRIEF -->
-        <div class="rover-overlay" id="rover-complete-overlay" role="dialog" aria-modal="true" aria-labelledby="rover-complete-title" hidden>
+        <div class="rover-overlay" id="rover-complete-overlay" role="dialog" aria-modal="true" aria-labelledby="rover-complete-hero-title" hidden>
           <div class="rover-modal-card rover-modal-card--complete">
             <div class="rover-modal-card__top-row">
               <p class="caption-orange">APOLLO 15 LUNAR ROVER  /  MISSION DEBRIEF</p>
@@ -2652,7 +2864,7 @@ function buildApp() {
 
             <!-- A. Main Score Section (The visual hero focus) -->
             <div class="rover-complete-hero">
-              <h2 class="display-title text-plum rover-complete-hero__title" id="rover-complete-title">
+              <h2 class="display-title text-plum rover-complete-hero__title" id="rover-complete-hero-title">
                 MISSION COMPLETE!
               </h2>
               <div class="rover-complete-hero__score">
@@ -2687,11 +2899,11 @@ function buildApp() {
               </div>
             </div>
 
-            <!-- C & D. Clean Top 5 Leaderboard + Short Historical Takeaway -->
+            <!-- C & D. Clean Top 10 Leaderboard + Short Historical Takeaway -->
             <div class="rover-complete-content-grid">
               <div class="rover-complete-leaderboard-panel">
                 <div class="rover-complete-leaderboard-header">
-                  <h3 class="heading-sm text-plum">🏆 Top 5 Mission Explorers</h3>
+                  <h3 class="heading-sm text-plum">🏆 Top 10 Mission Explorers</h3>
                   <span class="rover-leaderboard-status" id="rover-complete-submit-status">Score submitted!</span>
                 </div>
                 <div id="rover-complete-leaderboard-table-wrap">
@@ -2830,6 +3042,68 @@ function buildApp() {
               <span class="read-more-link__ext" aria-hidden="true">↗</span>
             </a>
           </div>
+        </footer>
+      </div>
+    </div>
+
+    <!-- REUSABLE COMPACT SETTINGS MODAL -->
+    <div class="modal-backdrop" id="settings-backdrop" hidden>
+      <div class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+        <header class="settings-modal__header">
+          <div>
+            <p class="caption-amber">ORBITOYS AUDIO &amp; GAMEPLAY</p>
+            <h2 class="heading-lg" id="settings-modal-title">⚙️ Game Settings</h2>
+          </div>
+          <button
+            type="button"
+            class="btn-zoom-close"
+            id="btn-settings-close"
+            aria-label="Close Settings"
+          >
+            ✕ Close
+          </button>
+        </header>
+        <div class="settings-modal__body">
+          <div class="settings-row">
+            <div class="settings-row__info">
+              <span class="settings-row__label">Background Music</span>
+              <span class="settings-row__desc">Space exploration soundtrack and ambient themes</span>
+            </div>
+            <button
+              type="button"
+              class="btn-toggle-switch is-active"
+              id="btn-settings-toggle-music"
+              role="switch"
+              aria-checked="true"
+              aria-label="Toggle background music"
+            >
+              <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+              <span class="settings-toggle-text" id="settings-music-status-text">ON</span>
+            </button>
+          </div>
+          <div class="settings-row">
+            <div class="settings-row__info">
+              <span class="settings-row__label">Sound Effects (SFX)</span>
+              <span class="settings-row__desc">Lunar engine hums, sample collection pings, and UI sounds</span>
+            </div>
+            <button
+              type="button"
+              class="btn-toggle-switch is-active"
+              id="btn-settings-toggle-sfx"
+              role="switch"
+              aria-checked="true"
+              aria-label="Toggle sound effects"
+            >
+              <span class="toggle-switch-track"><span class="toggle-switch-thumb"></span></span>
+              <span class="settings-toggle-text" id="settings-sfx-status-text">ON</span>
+            </button>
+          </div>
+        </div>
+        <footer class="settings-modal__footer">
+          <p class="settings-modal__note">Preferences are automatically saved on this device.</p>
+          <button type="button" class="btn btn--primary btn-sm" id="btn-settings-done">
+            Done
+          </button>
         </footer>
       </div>
     </div>
@@ -3644,6 +3918,7 @@ function resetRoverMissionState(targetPhase = 'briefing') {
   g.baseScore = 0;
   g.timeBonus = 0;
   g.finalScore = 0;
+  g.isEarlyEnd = false;
   g.scoreSubmitted = false;
   g.rover.x = 640;
   g.rover.y = 472;
@@ -3775,12 +4050,12 @@ function processLeaderboardEntries(data, currentPlayerName = '', currentFinalSco
   // Sort unique explorers descending by score
   const sorted = Array.from(uniqueMap.values()).sort((a, b) => b.score - a.score);
 
-  // Take top 5 unique explorers and compute shared rank for ties
-  const top5 = sorted.slice(0, 5);
+  // Take top 10 unique explorers and compute shared rank for ties
+  const top10 = sorted.slice(0, 10);
   let rank = 1;
-  return top5.map((entry, index) => {
+  return top10.map((entry, index) => {
     if (index > 0) {
-      if (entry.score < top5[index - 1].score) {
+      if (entry.score < top10[index - 1].score) {
         rank = index + 1;
       }
     } else {
@@ -3867,7 +4142,7 @@ function renderLeaderboardRows(data, currentPlayerName, currentFinalScore = null
     .join('');
 
   return `
-    <table class="rover-leaderboard-table" aria-label="Apollo 15 Top 5 Mission Scores">
+    <table class="rover-leaderboard-table" aria-label="Apollo 15 Top 10 Mission Scores">
       <thead>
         <tr>
           <th scope="col">Rank</th>
@@ -4070,6 +4345,7 @@ function pauseRoverMission() {
     t.isRunning = false;
   }
   resetRoverKeys();
+  hideRoverEarlyEndConfirm();
   syncRoverOverlays();
   const resumeBtn = document.querySelector('#btn-rover-resume');
   if (resumeBtn) resumeBtn.focus();
@@ -4440,6 +4716,7 @@ function completeRoverMission() {
   if (g.phase === 'completed') return;
 
   g.phase = 'completed';
+  g.isEarlyEnd = false;
   stopRoverGameLoop();
   resetRoverKeys();
 
@@ -4464,6 +4741,16 @@ function completeRoverMission() {
   hideRoverDiscoveryToast();
   updateRoverHud();
   drawRoverWorld();
+
+  const headerSubtitleEl = document.querySelector('#rover-complete-overlay .rover-modal-card__top-row p.caption-orange');
+  if (headerSubtitleEl) {
+    headerSubtitleEl.textContent = 'APOLLO 15 LUNAR ROVER  /  MISSION DEBRIEF';
+  }
+
+  const heroTitleEl = document.querySelector('#rover-complete-hero-title');
+  if (heroTitleEl) {
+    heroTitleEl.textContent = 'MISSION COMPLETE!';
+  }
 
   // Populate Mission Complete Debrief modal
   const msgIndex =
@@ -4525,6 +4812,137 @@ function completeRoverMission() {
   syncRoverOverlays();
   const playAgainBtn = document.querySelector('#btn-rover-play-again');
   if (playAgainBtn) playAgainBtn.focus();
+}
+
+function endRoverMissionEarly() {
+  const g = state.roverGame;
+  if (g.phase === 'completed') return;
+
+  g.phase = 'completed';
+  g.isEarlyEnd = true;
+  stopRoverGameLoop();
+  resetRoverKeys();
+
+  // Stop timer and calculate total elapsed seconds
+  const t = g.timer;
+  if (t && t.isRunning) {
+    t.elapsedMs += Math.max(0, performance.now() - t.startTime);
+    t.isRunning = false;
+  }
+  const totalElapsedSecs = Math.max(0, Math.floor((t?.elapsedMs || 0) / 1000));
+  const timeFormatted = formatTime(totalElapsedSecs);
+
+  // Early end: only award points for completed objectives!
+  // Samples: 100 pts each, Clues: 50 pts each.
+  // NO safe return (0), NO mission completion (0), NO time bonus (0).
+  const samplePts = g.collectedSamples.size * 100;
+  const cluePts = g.collectedClues.size * 50;
+  const currentEarnedScore = samplePts + cluePts;
+
+  g.score = currentEarnedScore;
+  g.baseScore = currentEarnedScore;
+  g.timeBonus = 0;
+  g.finalScore = currentEarnedScore;
+
+  // Do NOT overwrite the player's best completed score with a lower incomplete run!
+  if (g.finalScore > state.bestRoverScore) {
+    state.bestRoverScore = saveBestMissionScore(g.finalScore);
+  }
+
+  audioSystem.playMissionComplete();
+  hideRoverDiscoveryToast();
+  updateRoverHud();
+  drawRoverWorld();
+
+  const headerSubtitleEl = document.querySelector('#rover-complete-overlay .rover-modal-card__top-row p.caption-orange');
+  if (headerSubtitleEl) {
+    headerSubtitleEl.textContent = 'APOLLO 15 LUNAR ROVER  /  MISSION ENDED EARLY';
+  }
+
+  const heroTitleEl = document.querySelector('#rover-complete-hero-title');
+  if (heroTitleEl) {
+    heroTitleEl.textContent = 'MISSION ENDED EARLY';
+  }
+
+  const encouragementEl = document.querySelector('#rover-complete-encouragement');
+  if (encouragementEl) {
+    encouragementEl.textContent = 'Exploration concluded early. Field samples & discoveries recorded.';
+  }
+
+  const playerNameEl = document.querySelector('#rover-complete-player-name');
+  if (playerNameEl) {
+    playerNameEl.textContent = g.playerName || 'Explorer';
+  }
+
+  const scoreEl = document.querySelector('#rover-complete-score');
+  if (scoreEl) scoreEl.textContent = String(g.finalScore);
+
+  const baseScoreEl = document.querySelector('#rover-complete-base-score');
+  if (baseScoreEl) baseScoreEl.textContent = `${g.baseScore} / 800`;
+
+  const timeBonusEl = document.querySelector('#rover-complete-time-bonus');
+  if (timeBonusEl) timeBonusEl.textContent = `0 / 200 (Completed Only)`;
+
+  const timeEl = document.querySelector('#rover-complete-time');
+  if (timeEl) timeEl.textContent = timeFormatted;
+
+  const bestPill = document.querySelector('#rover-complete-best-pill');
+  if (bestPill) bestPill.textContent = `BEST: ${state.bestRoverScore} / 1,000 PTS`;
+
+  const bestEl = document.querySelector('#rover-complete-best');
+  if (bestEl) bestEl.textContent = `${state.bestRoverScore} / 1,000`;
+
+  const samplesEl = document.querySelector('#rover-complete-samples');
+  if (samplesEl) {
+    samplesEl.textContent = `${g.collectedSamples.size} / ${LRV_MISSION_LOCATIONS.length}`;
+  }
+
+  // Initial render of cached leaderboard or placeholder
+  renderCompleteLeaderboardTable(g.cachedLeaderboard, g.playerName, g.finalScore);
+
+  // Submit score to Google Sheets once
+  if (!g.scoreSubmitted) {
+    g.scoreSubmitted = true;
+    const submitStatusEl = document.querySelector('#rover-complete-submit-status');
+    if (submitStatusEl) submitStatusEl.textContent = 'Submitting score to mission control...';
+
+    submitScoreToLeaderboard(g.playerName, g.finalScore).then(async (ok) => {
+      if (submitStatusEl) {
+        submitStatusEl.textContent = ok ? '✓ Score recorded on leaderboard!' : 'Score recorded locally.';
+      }
+      const updatedLeaderboard = await fetchLeaderboard();
+      if (updatedLeaderboard) {
+        g.cachedLeaderboard = updatedLeaderboard;
+        renderCompleteLeaderboardTable(updatedLeaderboard, g.playerName, g.finalScore);
+      }
+    });
+  }
+
+  syncRoverOverlays();
+  const playAgainBtn = document.querySelector('#btn-rover-play-again');
+  if (playAgainBtn) playAgainBtn.focus();
+}
+
+function showRoverEarlyEndConfirm() {
+  const g = state.roverGame;
+  const samplePts = g.collectedSamples.size * 100;
+  const cluePts = g.collectedClues.size * 50;
+  const currentEarnedScore = samplePts + cluePts;
+  const previewEl = document.querySelector('#rover-early-end-preview-score');
+  if (previewEl) {
+    previewEl.textContent = `${currentEarnedScore} pts (${g.collectedSamples.size}/3 samples, ${g.collectedClues.size}/3 clues)`;
+  }
+  const mainView = document.querySelector('#rover-pause-main-view');
+  const confirmView = document.querySelector('#rover-pause-confirm-end-view');
+  if (mainView) mainView.hidden = true;
+  if (confirmView) confirmView.hidden = false;
+}
+
+function hideRoverEarlyEndConfirm() {
+  const mainView = document.querySelector('#rover-pause-main-view');
+  const confirmView = document.querySelector('#rover-pause-confirm-end-view');
+  if (mainView) mainView.hidden = false;
+  if (confirmView) confirmView.hidden = true;
 }
 
 function updateRoverWorld(dt, gpState = null) {
@@ -5554,6 +5972,16 @@ function bindEvents() {
     exitRoverMissionToShop();
   });
 
+  // Briefing header compact audio controls
+  document.querySelector('#btn-briefing-music')?.addEventListener('click', () => {
+    audioSystem.playClick();
+    audioSystem.toggleMusic();
+  });
+
+  document.querySelector('#btn-briefing-sfx')?.addEventListener('click', () => {
+    audioSystem.toggleSfx();
+  });
+
   document.querySelector('#btn-rover-pause')?.addEventListener('click', () => {
     if (state.roverGame.phase === 'playing') {
       pauseRoverMission();
@@ -5574,12 +6002,58 @@ function bindEvents() {
     exitRoverMissionToShop();
   });
 
+  document.querySelector('#btn-rover-end-early')?.addEventListener('click', () => {
+    audioSystem.playClick();
+    showRoverEarlyEndConfirm();
+  });
+
+  document.querySelector('#btn-rover-cancel-end')?.addEventListener('click', () => {
+    audioSystem.playClick();
+    hideRoverEarlyEndConfirm();
+  });
+
+  document.querySelector('#btn-rover-confirm-end')?.addEventListener('click', () => {
+    audioSystem.playClick();
+    endRoverMissionEarly();
+  });
+
   document.querySelector('#btn-rover-play-again')?.addEventListener('click', () => {
     playAgainRoverMission();
   });
 
   document.querySelector('#btn-rover-complete-shop')?.addEventListener('click', () => {
     exitRoverMissionToShop();
+  });
+
+  // Settings Modal controls & switches
+  document.addEventListener('click', (e) => {
+    const settingsBtn = e.target.closest('[data-action="open-settings"], #btn-rover-pause-settings');
+    if (settingsBtn) {
+      openSettingsModal();
+    }
+  });
+
+  document.querySelector('#btn-settings-close')?.addEventListener('click', () => {
+    closeSettingsModal();
+  });
+
+  document.querySelector('#btn-settings-done')?.addEventListener('click', () => {
+    closeSettingsModal();
+  });
+
+  document.querySelector('#settings-backdrop')?.addEventListener('click', (e) => {
+    if (e.target.id === 'settings-backdrop') {
+      closeSettingsModal();
+    }
+  });
+
+  document.querySelector('#btn-settings-toggle-music')?.addEventListener('click', () => {
+    audioSystem.playClick();
+    audioSystem.toggleMusic();
+  });
+
+  document.querySelector('#btn-settings-toggle-sfx')?.addEventListener('click', () => {
+    audioSystem.toggleSfx();
   });
 
   document.querySelector('#btn-rover-collect').addEventListener('click', () => {
@@ -5882,6 +6356,14 @@ function bindEvents() {
             }
           }
         }
+      }
+      return;
+    }
+
+    if (state.isSettingsOpen) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeSettingsModal();
       }
       return;
     }

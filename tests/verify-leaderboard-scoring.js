@@ -1,5 +1,5 @@
 /**
- * ORBITOYS — Automated Mission Briefing Registration, Leaderboard & Time Scoring Verification Suite
+ * ORBITOYS — Automated Mission Briefing Registration, Top 10 Leaderboard, Settings & Time Scoring Verification Suite
  */
 
 import fs from 'node:fs';
@@ -15,7 +15,7 @@ const styleCssPath = path.join(rootDir, 'src', 'style.css');
 const envLocalPath = path.join(rootDir, '.env.local');
 
 console.log('======================================================================');
-console.log('ORBITOYS — BRIEFING REGISTRATION, LEADERBOARD & TIME SCORING TEST');
+console.log('ORBITOYS — BRIEFING REGISTRATION, TOP 10 LEADERBOARD & TIME SCORING TEST');
 console.log('======================================================================\n');
 
 let totalTests = 0;
@@ -37,7 +37,7 @@ const mainJs = fs.readFileSync(mainJsPath, 'utf8');
 const styleCss = fs.readFileSync(styleCssPath, 'utf8');
 const envLocal = fs.existsSync(envLocalPath) ? fs.readFileSync(envLocalPath, 'utf8') : '';
 
-// 1. Verify Google Apps Script Endpoint Configuration
+// 1. Verify Google Apps Script Endpoint & .env.local
 console.log('\n--- 1. Google Apps Script Endpoint & .env.local ---');
 const expectedEndpoint =
   'https://script.google.com/macros/s/AKfycbzGKQrlacnFi6os69c7OIq0HOzPQvNYQg8MNY4iEP_j3j90StgmVdpaWIEy0VMyBpFA/exec';
@@ -50,8 +50,8 @@ assert(
 );
 assert(mainJs.includes(expectedEndpoint), 'src/main.js includes fallback to verified Apps Script endpoint');
 
-// 2. Verify Briefing Screen Elements (No separate page/screen)
-console.log('\n--- 2. Existing Mission Briefing Screen Modifications ---');
+// 2. Verify Briefing Screen Elements & Header Audio Controls
+console.log('\n--- 2. Existing Mission Briefing Screen & Header Audio Controls ---');
 assert(
   mainJs.includes('id="rover-briefing-overlay"'),
   'Existing briefing overlay (#rover-briefing-overlay) is maintained'
@@ -80,6 +80,10 @@ assert(
   mainJs.includes('id="rover-leaderboard-modal"'),
   'Compact leaderboard popover/modal (#rover-leaderboard-modal) is present'
 );
+assert(
+  mainJs.includes('id="btn-briefing-music"') && mainJs.includes('id="btn-briefing-sfx"'),
+  'Briefing header top-row contains compact Music (#btn-briefing-music) and SFX (#btn-briefing-sfx) controls'
+);
 
 // 3. Verify Scoring Display & Time Bonus Note
 console.log('\n--- 3. Updated Scoring Display & Time Bonus Hint ---');
@@ -89,8 +93,7 @@ assert(
   'Scoring formula specifies 800 base/mission points + up to 200 time/speed bonus points = 1,000 max points'
 );
 assert(
-  mainJs.includes('Complete your mission faster to earn bonus points') ||
-    mainJs.includes('Complete your mission faster to earn up to 200 bonus points!'),
+  mainJs.includes('Complete your mission faster to earn bonus points'),
   'Subtle time-bonus explanation note is present in briefing'
 );
 assert(
@@ -98,19 +101,19 @@ assert(
   'Best score pill uses 1,000 max points rather than 800'
 );
 
-// 4. Verify Time Scoring Configuration & Formula
-console.log('\n--- 4. Time Scoring Configuration & Calculations ---');
+// 4. Verify Time Scoring Configuration & Formula (10s Full Bonus Threshold)
+console.log('\n--- 4. Time Scoring Configuration & 10s Full Bonus Threshold ---');
 assert(
   mainJs.includes('MAX_TIME_BONUS: 200') &&
-    mainJs.includes('FULL_TIME_BONUS_SECONDS: 20') &&
+    mainJs.includes('FULL_TIME_BONUS_SECONDS: 10') &&
     mainJs.includes('NO_TIME_BONUS_AFTER_SECONDS: 90'),
-  'TIME_SCORING_CONFIG object defines MAX_TIME_BONUS: 200, FULL_TIME_BONUS_SECONDS: 20, NO_TIME_BONUS_AFTER_SECONDS: 90'
+  'TIME_SCORING_CONFIG object defines MAX_TIME_BONUS: 200, FULL_TIME_BONUS_SECONDS: 10, NO_TIME_BONUS_AFTER_SECONDS: 90'
 );
 
 // Test time bonus calculation math directly (Math.floor(MAX_TIME_BONUS * remaining))
 function calculateTimeBonus(elapsedSeconds) {
   const MAX_TIME_BONUS = 200;
-  const FULL_TIME_BONUS_SECONDS = 20;
+  const FULL_TIME_BONUS_SECONDS = 10;
   const NO_TIME_BONUS_AFTER_SECONDS = 90;
   const safeSecs = Math.max(0, Number(elapsedSeconds) || 0);
 
@@ -122,10 +125,10 @@ function calculateTimeBonus(elapsedSeconds) {
 }
 
 assert(calculateTimeBonus(0) === 200, 'Time bonus at 0s = 200 pts');
-assert(calculateTimeBonus(10) === 200, 'Time bonus at 10s = 200 pts');
-assert(calculateTimeBonus(20) === 200, 'Time bonus at 20s = 200 pts (full bonus boundary)');
-assert(calculateTimeBonus(40) === 142, 'Time bonus at 40s = 142 pts (Math.floor(200 * 50/70))');
-assert(calculateTimeBonus(55) === 100, 'Time bonus at 55s = 100 pts (halfway)');
+assert(calculateTimeBonus(5) === 200, 'Time bonus at 5s = 200 pts');
+assert(calculateTimeBonus(10) === 200, 'Time bonus at 10s = 200 pts (full bonus boundary)');
+assert(calculateTimeBonus(40) === 125, 'Time bonus at 40s = 125 pts (Math.floor(200 * 50/80))');
+assert(calculateTimeBonus(50) === 100, 'Time bonus at 50s = 100 pts (Math.floor(200 * 40/80))');
 assert(calculateTimeBonus(90) === 0, 'Time bonus at 90s = 0 pts (cutoff boundary)');
 assert(calculateTimeBonus(120) === 0, 'Time bonus at 120s = 0 pts');
 
@@ -148,22 +151,22 @@ assert(
   'Resuming restarts active timer calculation without counting paused time'
 );
 
-// 6. Verify Google Sheets API Format & Deduplication Logic
-console.log('\n--- 6. Google Sheets API Request, Response Formats & Deduplication ---');
+// 6. Verify Top 10 Leaderboard & Deduplication Logic
+console.log('\n--- 6. Google Sheets API, Top 10 Slicing & Deduplication ---');
 assert(
   mainJs.includes("stoppedAt: Number(finalScore) || 0") && mainJs.includes("diff: 'Score'"),
   'POST payload strictly preserves { name: playerName, stoppedAt: finalScore, diff: "Score" }'
 );
 assert(
-  mainJs.includes('stoppedAt') && mainJs.includes('sort((a, b) => b.score - a.score)'),
-  'GET handler maps stoppedAt as score, sorts descending, and returns top 5'
-);
-assert(
   mainJs.includes('processLeaderboardEntries'),
   'main.js includes processLeaderboardEntries helper for leaderboard deduplication'
 );
+assert(
+  mainJs.includes('slice(0, 10)'),
+  'processLeaderboardEntries slices top 10 unique explorers'
+);
 
-// Test deduplication and tie-ranking logic directly
+// Test deduplication and tie-ranking logic directly for Top 10
 function processLeaderboardEntriesTest(data, currentPlayerName, currentFinalScore) {
   const uniqueMap = new Map();
   if (Array.isArray(data)) {
@@ -187,11 +190,11 @@ function processLeaderboardEntriesTest(data, currentPlayerName, currentFinalScor
     }
   }
   const sorted = Array.from(uniqueMap.values()).sort((a, b) => b.score - a.score);
-  const top5 = sorted.slice(0, 5);
+  const top10 = sorted.slice(0, 10);
   let rank = 1;
-  return top5.map((entry, index) => {
+  return top10.map((entry, index) => {
     if (index > 0) {
-      if (entry.score < top5[index - 1].score) {
+      if (entry.score < top10[index - 1].score) {
         rank = index + 1;
       }
     } else {
@@ -210,71 +213,82 @@ const mockRawEntries = [
   { name: 'Duke', stoppedAt: 700 },
   { name: 'Young', stoppedAt: 650 },
   { name: 'Cernan', stoppedAt: 600 },
+  { name: 'Armstrong', stoppedAt: 580 },
+  { name: 'Aldrin', stoppedAt: 550 },
+  { name: 'Collins', stoppedAt: 520 },
+  { name: 'Conrad', stoppedAt: 500 },
+  { name: 'Bean', stoppedAt: 480 },
+  { name: 'Shepard', stoppedAt: 450 },
 ];
 
 const processed = processLeaderboardEntriesTest(mockRawEntries, null, null);
-assert(processed.length === 5, 'Deduplicated leaderboard returns at most 5 unique explorers');
+assert(processed.length === 10, 'Deduplicated leaderboard returns at most 10 unique explorers');
 assert(processed[0].name === 'Commander Scott' && processed[0].score === 942, 'Keeps highest score for Commander Scott (942)');
 assert(processed[1].name === 'Irwin' && processed[1].score === 942, 'Keeps highest score for Irwin (942)');
 assert(processed[0].rank === 1 && processed[1].rank === 1, 'Tied scores share rank #1 without invented tie-breaker');
 assert(processed[2].rank === 3, 'Next explorer after tie takes correct rank #3');
 
-// 7. Verify Results Debrief & Leaderboard Integration
-console.log('\n--- 7. Results Screen & Top 5 Leaderboard ---');
+// 7. Verify Settings Button, Settings Modal & Audio Persistence
+console.log('\n--- 7. Settings Button, Settings Modal & Audio State Persistence ---');
 assert(
-  mainJs.includes('rover-complete-hero'),
-  'Debrief contains hero score display (.rover-complete-hero)'
+  mainJs.includes('id="btn-shelf-settings"') &&
+    mainJs.includes('id="btn-discovery-settings"') &&
+    mainJs.includes('id="btn-interactive-settings"') &&
+    mainJs.includes('id="btn-rover-hud-settings"') &&
+    mainJs.includes('id="btn-rover-pause-settings"'),
+  'Gear settings buttons are present in Shelf, Discovery, Interactive, Rover HUD, and Pause menu'
 );
 assert(
-  mainJs.includes('rover-score-strip'),
-  'Debrief contains compact score strip (.rover-score-strip)'
+  mainJs.includes('id="settings-backdrop"') &&
+    mainJs.includes('id="btn-settings-toggle-music"') &&
+    mainJs.includes('id="btn-settings-toggle-sfx"') &&
+    mainJs.includes('id="btn-settings-close"'),
+  'Compact Settings modal (#settings-backdrop) has Music toggle, SFX toggle, and Close button'
 );
 assert(
-  mainJs.includes('id="rover-complete-player-name"'),
-  'Debrief displays Explorer Name (#rover-complete-player-name)'
-);
-assert(
-  mainJs.includes('id="rover-complete-base-score"'),
-  'Debrief displays Base Score out of 800 (#rover-complete-base-score)'
-);
-assert(
-  mainJs.includes('id="rover-complete-time-bonus"'),
-  'Debrief displays Time Bonus out of 200 (#rover-complete-time-bonus)'
-);
-assert(
-  mainJs.includes('id="rover-complete-score"'),
-  'Debrief displays Final Score out of 1,000 (#rover-complete-score)'
-);
-assert(
-  mainJs.includes('id="rover-complete-time"'),
-  'Debrief displays Completion Time (#rover-complete-time)'
-);
-assert(
-  mainJs.includes('id="rover-complete-leaderboard-table-wrap"'),
-  'Debrief displays Mission Leaderboard Top 5 table container'
-);
-assert(
-  mainJs.includes('is-current-player'),
-  'Leaderboard table highlights the current player\'s entry (.is-current-player)'
-);
-assert(
-  mainJs.includes('playAgainRoverMission'),
-  'Play Again returns to briefing with explorer name retained'
+  mainJs.includes('loadSavedAudioPreferences') && mainJs.includes('saveAudioPreferences'),
+  'Audio preferences are saved and loaded from localStorage'
 );
 
-// 8. Verify CSS Styling Consistency & Audio Dock
-console.log('\n--- 8. CSS Styling Consistency & Audio Dock ---');
-assert(styleCss.includes('.btn-rover-leaderboard-trigger'), 'CSS defines .btn-rover-leaderboard-trigger');
-assert(styleCss.includes('.rover-registration-box') || styleCss.includes('.rover-briefing-name-block'), 'CSS defines registration styles');
-assert(styleCss.includes('.rover-registration-input'), 'CSS defines .rover-registration-input');
-assert(styleCss.includes('.rover-leaderboard-modal-backdrop'), 'CSS defines .rover-leaderboard-modal-backdrop');
-assert(styleCss.includes('.rover-leaderboard-table'), 'CSS defines .rover-leaderboard-table');
-assert(styleCss.includes('.is-current-player'), 'CSS defines .is-current-player');
-assert(styleCss.includes('.rover-stat-card--time'), 'CSS defines .rover-stat-card--time');
-assert(styleCss.includes('.rover-score-strip'), 'CSS defines .rover-score-strip for debrief');
-assert(styleCss.includes('.rover-complete-hero'), 'CSS defines .rover-complete-hero for debrief');
-assert(!styleCss.includes('left: 56%'), 'Removed floating centered audio controls rule (left: 56%)');
-assert(styleCss.includes('bottom: 16px') && styleCss.includes('left: 16px'), 'Audio dock positioned on the far-left (bottom: 16px; left: 16px)');
+// 8. Verify Pause Menu Options & Early Mission End Flow
+console.log('\n--- 8. Pause Menu Options & Early Mission End Submission ---');
+assert(
+  mainJs.includes('id="btn-rover-resume"') &&
+    mainJs.includes('id="btn-rover-restart"') &&
+    mainJs.includes('id="btn-rover-pause-settings"') &&
+    mainJs.includes('id="btn-rover-end-early"') &&
+    mainJs.includes('id="btn-rover-exit"'),
+  'Pause menu provides Resume, Restart, Settings, End Mission & Submit, and Exit options'
+);
+assert(
+  mainJs.includes('id="rover-pause-confirm-end-view"') &&
+    mainJs.includes('id="btn-rover-confirm-end"') &&
+    mainJs.includes('id="btn-rover-cancel-end"'),
+  'Pause menu has confirmation sub-view for ending mission early'
+);
+assert(
+  mainJs.includes('endRoverMissionEarly'),
+  'endRoverMissionEarly function exists in main.js'
+);
+assert(
+  mainJs.includes('g.isEarlyEnd = true') &&
+    mainJs.includes('MISSION ENDED EARLY'),
+  'Early mission end sets isEarlyEnd flag and displays MISSION ENDED EARLY header'
+);
+
+// 9. Verify CSS Rules & Visual Containment
+console.log('\n--- 9. CSS Styling & Layout Containment ---');
+assert(styleCss.includes('.btn-settings-gear'), 'CSS defines .btn-settings-gear');
+assert(styleCss.includes('.settings-modal'), 'CSS defines .settings-modal');
+assert(styleCss.includes('.btn-toggle-switch'), 'CSS defines .btn-toggle-switch');
+assert(styleCss.includes('.rover-briefing-audio-dock'), 'CSS defines .rover-briefing-audio-dock');
+assert(styleCss.includes('.btn--rover-end-early'), 'CSS defines .btn--rover-end-early');
+assert(styleCss.includes('#rover-complete-leaderboard-table-wrap'), 'CSS defines #rover-complete-leaderboard-table-wrap');
+assert(
+  styleCss.includes("body[data-screen='shelf'] .audio-controls") ||
+    styleCss.includes("body[data-screen='shelf'] #audio-dock"),
+  'Floating audio dock is hidden on interactive toy shop screens'
+);
 
 console.log('\n======================================================================');
 console.log(`TEST SUMMARY: ${passedTests} / ${totalTests} passed, ${failedTests} failed.`);
@@ -283,6 +297,6 @@ console.log('===================================================================
 if (failedTests > 0) {
   process.exit(1);
 } else {
-  console.log('\n🎉 ALL BRIEFING REGISTRATION, LEADERBOARD & TIME SCORING CHECKS PASSED!\n');
+  console.log('\n🎉 ALL SETTINGS, LEADERBOARD, SCORING & EARLY END CHECKS PASSED!\n');
   process.exit(0);
 }

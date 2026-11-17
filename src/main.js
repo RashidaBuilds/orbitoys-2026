@@ -722,8 +722,8 @@ const LEADERBOARD_SCRIPT_URL =
 
 const TIME_SCORING_CONFIG = {
   MAX_TIME_BONUS: 200,
-  FULL_TIME_BONUS_SECONDS: 180, // 3 minutes for maximum 200 time bonus points
-  NO_TIME_BONUS_AFTER_SECONDS: 360, // 6 minutes; beyond this, 0 time bonus points
+  FULL_TIME_BONUS_SECONDS: 20, // 20 seconds for full 200 time bonus points
+  NO_TIME_BONUS_AFTER_SECONDS: 90, // 90 seconds; beyond this, 0 time bonus points
 };
 
 /**
@@ -776,6 +776,11 @@ function formatTime(totalSeconds) {
 
 /**
  * Calculate dynamic time bonus based on elapsed seconds
+ * Rules:
+ * - Within 20s: 200 full bonus points
+ * - Between 20s and 90s: progressively decreases (e.g. 40s gives ~142 pts)
+ * - 90s or longer: 0 bonus points
+ * - Base score is never affected
  */
 function calculateTimeBonus(elapsedSeconds) {
   const { MAX_TIME_BONUS, FULL_TIME_BONUS_SECONDS, NO_TIME_BONUS_AFTER_SECONDS } = TIME_SCORING_CONFIG;
@@ -784,13 +789,16 @@ function calculateTimeBonus(elapsedSeconds) {
   if (safeSecs <= FULL_TIME_BONUS_SECONDS) {
     return MAX_TIME_BONUS;
   }
+
   if (safeSecs >= NO_TIME_BONUS_AFTER_SECONDS) {
     return 0;
   }
-  const span = NO_TIME_BONUS_AFTER_SECONDS - FULL_TIME_BONUS_SECONDS;
-  const overtime = safeSecs - FULL_TIME_BONUS_SECONDS;
-  const remainingFraction = (span - overtime) / span;
-  return Math.round(MAX_TIME_BONUS * Math.max(0, Math.min(1, remainingFraction)));
+
+  const remaining =
+    (NO_TIME_BONUS_AFTER_SECONDS - safeSecs) /
+    (NO_TIME_BONUS_AFTER_SECONDS - FULL_TIME_BONUS_SECONDS);
+
+  return Math.floor(MAX_TIME_BONUS * remaining);
 }
 
 /**
@@ -1736,15 +1744,17 @@ function updateAudioControlsUI() {
   const musicPlaying = state.musicEnabled && audioSystem.isPlaying();
   musicBtn.setAttribute('aria-pressed', musicPlaying ? 'true' : 'false');
   musicBtn.classList.toggle('is-muted', !musicPlaying);
-  musicBtn.querySelector('.audio-pill__label').textContent = musicPlaying
-    ? 'Music On'
-    : 'Music Off';
+  const musicLabel = musicBtn.querySelector('.audio-pill__label');
+  if (musicLabel) musicLabel.textContent = musicPlaying ? 'Music On' : 'Music Off';
+  musicBtn.setAttribute('title', musicPlaying ? 'Music: ON (Click to mute)' : 'Music: OFF (Click to unmute)');
+  musicBtn.setAttribute('aria-label', musicPlaying ? 'Background music (On)' : 'Background music (Off)');
 
   sfxBtn.setAttribute('aria-pressed', state.sfxEnabled ? 'true' : 'false');
   sfxBtn.classList.toggle('is-muted', !state.sfxEnabled);
-  sfxBtn.querySelector('.audio-pill__label').textContent = state.sfxEnabled
-    ? 'SFX On'
-    : 'SFX Off';
+  const sfxLabel = sfxBtn.querySelector('.audio-pill__label');
+  if (sfxLabel) sfxLabel.textContent = state.sfxEnabled ? 'SFX On' : 'SFX Off';
+  sfxBtn.setAttribute('title', state.sfxEnabled ? 'Sound effects: ON (Click to mute)' : 'Sound effects: OFF (Click to unmute)');
+  sfxBtn.setAttribute('aria-label', state.sfxEnabled ? 'Sound effects (On)' : 'Sound effects (Off)');
 }
 
 /**
@@ -1870,14 +1880,15 @@ function buildApp() {
     <!-- Decorative Star & Sparkle Cursor Trail Layer -->
     <div class="star-trail-layer" id="star-trail-layer" aria-hidden="true"></div>
 
-    <!-- Unobtrusive Persistent Audio Controls (Music & SFX) -->
-    <aside class="audio-controls" aria-label="Audio controls">
+    <!-- Discreet Persistent Audio Dock (Music & SFX) on Far-Left -->
+    <aside class="audio-controls audio-dock" id="audio-dock" aria-label="Audio controls">
       <button
         type="button"
-        class="audio-pill"
+        class="audio-pill audio-dock__btn"
         id="btn-toggle-music"
         aria-pressed="true"
-        title="Toggle background music"
+        title="Music: ON (Click to mute)"
+        aria-label="Background music (On)"
       >
         <svg class="audio-pill__icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <path d="M9 4.5L5.2 7.5H2.5V12.5H5.2L9 15.5V4.5Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1887,10 +1898,11 @@ function buildApp() {
       </button>
       <button
         type="button"
-        class="audio-pill"
+        class="audio-pill audio-dock__btn"
         id="btn-toggle-sfx"
         aria-pressed="true"
-        title="Toggle interaction sound effects"
+        title="Sound effects: ON (Click to mute)"
+        aria-label="Sound effects (On)"
       >
         <svg class="audio-pill__icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
           <path d="M10 2.5L11.8 7.6L17 9.4L11.8 11.2L10 16.3L8.2 11.2L3 9.4L8.2 7.6L10 2.5Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
@@ -2443,7 +2455,8 @@ function buildApp() {
 
         <!-- OVERLAY 1: MISSION BRIEFING BEFORE GAMEPLAY -->
         <div class="rover-overlay is-open" id="rover-briefing-overlay" role="dialog" aria-modal="true" aria-labelledby="rover-briefing-title">
-          <div class="rover-modal-card">
+          <div class="rover-modal-card rover-modal-card--briefing">
+            <!-- Top Metadata Row with View Leaderboard & Best Score -->
             <div class="rover-modal-card__top-row">
               <p class="caption-orange">APOLLO 15  /  HADLEY–APENNINE  /  JULY 31, 1971</p>
               <div class="rover-briefing-top-controls">
@@ -2462,15 +2475,43 @@ function buildApp() {
                 </span>
               </div>
             </div>
-            <h2 class="heading-lg text-plum" id="rover-briefing-title">
+
+            <!-- A. Mission Heading -->
+            <h2 class="heading-lg text-plum rover-briefing-heading" id="rover-briefing-title">
               MISSION: HADLEY-APENNINE EXPLORATION
             </h2>
-            <p class="body-md text-plum rover-modal-card__lead">
-              You are taking the Lunar Rover across the Moon to explore its rugged terrain and collect geological samples. Navigate the lunar landscape, discover interesting locations and bring your findings safely back to the Lunar Module.
+
+            <!-- B. Explorer Name immediately below the mission heading -->
+            <div class="rover-briefing-name-block">
+              <div class="rover-registration-field">
+                <label for="rover-player-name-input" class="rover-registration-label">
+                  <span>Explorer Name</span>
+                </label>
+                <div class="rover-registration-input-wrap">
+                  <input
+                    type="text"
+                    id="rover-player-name-input"
+                    class="rover-registration-input"
+                    placeholder="Enter your name"
+                    maxlength="20"
+                    autocomplete="name"
+                    spellcheck="false"
+                    aria-describedby="rover-name-char-count rover-name-error"
+                  />
+                  <span class="rover-registration-counter" id="rover-name-char-count">0/20</span>
+                </div>
+                <p class="rover-registration-error" id="rover-name-error" role="alert" hidden></p>
+              </div>
+            </div>
+
+            <!-- C. Short Mission Introduction -->
+            <p class="body-sm text-plum rover-briefing-lead">
+              Explore the Moon in the Apollo 15 Lunar Rover. Discover three geological locations, collect samples and return safely to the Lunar Module.
             </p>
 
-            <div class="rover-briefing-grid">
-              <figure class="rover-briefing-photo">
+            <!-- Main Content: Compact NASA photo on left + Objectives, Scoring, Historical fact on right -->
+            <div class="rover-briefing-grid rover-briefing-grid--compact">
+              <figure class="rover-briefing-photo rover-briefing-photo--compact">
                 <button
                   type="button"
                   class="nasa-photo-launch-btn"
@@ -2482,10 +2523,10 @@ function buildApp() {
                     src="/assets/nasa/apollo15-on-moon.jpg"
                     alt="Astronaut working at the Lunar Roving Vehicle during Apollo 15 at Hadley-Apennine"
                   />
-                  <span class="nasa-photo-launch-badge" aria-hidden="true">🔍 View in High-Res</span>
+                  <span class="nasa-photo-launch-badge" aria-hidden="true">🔍 High-Res</span>
                 </button>
                 <figcaption>
-                  “During Apollo 15's first lunar surface excursion, the crew worked with the Lunar Roving Vehicle at the Hadley-Apennine landing site.”
+                  “Apollo 15 Lunar Roving Vehicle at Hadley–Apennine.”
                   <strong>Credit: NASA</strong> •
                   <a
                     href="https://science.nasa.gov/resource/apollo-15-on-the-moon/"
@@ -2496,69 +2537,42 @@ function buildApp() {
               </figure>
 
               <div class="rover-briefing-details">
-                <div class="rover-briefing-box">
-                  <p class="caption-orange">MISSION OBJECTIVE &amp; SCORING (MAX 1,000 PTS)</p>
-                  <ul class="intro-highlights-list">
-                    <li><strong>Sample Target: 3</strong> — Collect samples at <strong>01 Elbow Crater</strong>, <strong>02 Spur Crater</strong>, and <strong>03 Hadley Rille</strong> (100 pts each = 300 pts).</li>
-                    <li><strong>Exploration Clues: 3</strong> — Drive over glowing ★ field-note beacons along the trails (50 pts each = 150 pts).</li>
-                    <li><strong>Safe Return:</strong> Drive back to the <strong>Lunar Module</strong> (+100 pts return + 250 pts completion = 350 pts).</li>
+                <!-- D. Mission Objectives (3 short bullet points) -->
+                <div class="rover-briefing-box rover-briefing-box--objectives">
+                  <p class="caption-orange">MISSION OBJECTIVES</p>
+                  <ul class="intro-highlights-list rover-objectives-list">
+                    <li>Collect 3 lunar samples.</li>
+                    <li>Discover 3 exploration clues.</li>
+                    <li>Return safely to the Lunar Module.</li>
                   </ul>
-                  <p class="rover-scoring-formula">
-                    <strong>800 BASE POINTS + UP TO 200 TIME-BONUS POINTS = 1,000 MAX POINTS.</strong>
+                </div>
+
+                <!-- E. Scoring Summary (1 compact card) -->
+                <div class="rover-briefing-box rover-briefing-box--scoring">
+                  <p class="rover-scoring-line">
+                    <strong>Up to 800 mission points + 200 speed bonus = 1,000 maximum.</strong>
                   </p>
                   <p class="rover-time-bonus-note">
-                    ⚡ <em>Complete your mission faster to earn up to 200 bonus points!</em>
+                    ⚡ <em>Complete your mission faster to earn bonus points.</em>
                   </p>
                 </div>
 
-                <div class="rover-briefing-box">
-                  <p class="caption-orange">CONTROLS GUIDE (KEYBOARD, MOUSE, TOUCH &amp; CONTROLLER)</p>
-                  <ul class="intro-highlights-list">
-                    <li><strong>Keyboard:</strong> Arrow Keys or WASD to drive &amp; steer • <strong>Space</strong> or <strong>E</strong> to collect a sample • <strong>Esc</strong> to pause.</li>
-                    <li><strong>Mouse &amp; Phone Touch:</strong> Click, tap, or drag anywhere on the lunar map to drive there. Tap any crater to drive to it and automatically collect its sample (or use the on-screen D-Pad).</li>
-                    <li><strong>Gamepad / Controller:</strong> Left Stick, D-Pad, or Triggers to drive &amp; steer • <strong>A / Cross</strong> or <strong>X / Square</strong> to collect samples &amp; confirm • <strong>Start</strong> to pause.</li>
-                  </ul>
-                </div>
-
-                <p class="rover-historical-note">
-                  <strong>Historical Fact:</strong> Apollo 15 was the first mission to use the Lunar Roving Vehicle on the Moon. Its first lunar use was on July 31, 1971.
+                <!-- F. Historical Fact (Only ONE short fact) -->
+                <p class="rover-historical-note rover-historical-note--compact">
+                  <strong>Historical Fact:</strong> Apollo 15 was the first mission to use the Lunar Roving Vehicle. Its first lunar use was July 31, 1971.
                 </p>
               </div>
             </div>
 
-            <!-- PLAYER REGISTRATION & MISSION ACTIONS -->
-            <div class="rover-briefing-footer">
-              <div class="rover-registration-box">
-                <div class="rover-registration-field">
-                  <label for="rover-player-name-input" class="rover-registration-label">
-                    <span>Explorer Name</span>
-                  </label>
-                  <div class="rover-registration-input-wrap">
-                    <input
-                      type="text"
-                      id="rover-player-name-input"
-                      class="rover-registration-input"
-                      placeholder="Enter your name"
-                      maxlength="20"
-                      autocomplete="off"
-                      spellcheck="false"
-                      aria-describedby="rover-name-char-count rover-name-error"
-                    />
-                    <span class="rover-registration-counter" id="rover-name-char-count">0/20</span>
-                  </div>
-                  <p class="rover-registration-error" id="rover-name-error" role="alert" hidden></p>
-                </div>
-
-                <div class="rover-modal-card__actions">
-                  <button type="button" class="btn btn--secondary" id="btn-rover-briefing-exit">
-                    <span>← Exit to Toy Shop</span>
-                  </button>
-                  <button type="button" class="btn btn--play-mission" id="btn-rover-start-mission">
-                    <img src="/assets/icon-play.svg" alt="" class="btn-play-mission__icon" aria-hidden="true" />
-                    <span>Start Mission</span>
-                  </button>
-                </div>
-              </div>
+            <!-- Actions: Exit to Toy Shop & Start Mission -->
+            <div class="rover-modal-card__actions rover-briefing-actions">
+              <button type="button" class="btn btn--secondary" id="btn-rover-briefing-exit">
+                <span>← Exit to Toy Shop</span>
+              </button>
+              <button type="button" class="btn btn--play-mission btn--pulse-glow" id="btn-rover-start-mission">
+                <img src="/assets/icon-play.svg" alt="" class="btn-play-mission__icon" aria-hidden="true" />
+                <span>Start Mission</span>
+              </button>
             </div>
           </div>
         </div>
@@ -2621,111 +2635,87 @@ function buildApp() {
           </div>
         </div>
 
-        <!-- OVERLAY 3: MISSION COMPLETE & HISTORICAL DEBRIEF -->
+        <!-- OVERLAY 3: MISSION COMPLETE & RESULTS DEBRIEF -->
         <div class="rover-overlay" id="rover-complete-overlay" role="dialog" aria-modal="true" aria-labelledby="rover-complete-title" hidden>
-          <div class="rover-modal-card">
+          <div class="rover-modal-card rover-modal-card--complete">
             <div class="rover-modal-card__top-row">
-              <p class="caption-orange">APOLLO 15 HISTORICAL DEBRIEF  /  HADLEY–APENNINE</p>
-              <span class="machine-status-pill machine-status-pill--playable">
-                ★ MISSION COMPLETE
-              </span>
-            </div>
-            <h2 class="display-title text-plum" id="rover-complete-title">MISSION COMPLETE</h2>
-            <p class="heading-lg text-plum" id="rover-complete-encouragement">
-              Moon explorer! You're doing amazing!
-            </p>
-
-            <div class="rover-complete-player-banner">
-              <div class="rover-complete-avatar" aria-hidden="true">🚀</div>
-              <div class="rover-complete-player-info">
-                <span class="rover-complete-player-label">EXPLORER</span>
-                <span class="rover-complete-player-name" id="rover-complete-player-name">Explorer</span>
-              </div>
-              <div class="rover-complete-rank-badge" id="rover-complete-rank-badge">
-                <span class="rover-complete-rank-text" id="rover-complete-rank-text">RANK #--</span>
+              <p class="caption-orange">APOLLO 15 LUNAR ROVER  /  MISSION DEBRIEF</p>
+              <div class="rover-complete-header-badges">
+                <span class="rover-complete-rank-badge" id="rover-complete-rank-badge">
+                  <span id="rover-complete-rank-text">RANK #1</span>
+                </span>
+                <span class="machine-status-pill machine-status-pill--playable" id="rover-complete-best-pill">
+                  BEST: 1,000 / 1,000 PTS
+                </span>
               </div>
             </div>
 
-            <div class="rover-score-summary">
-              <div class="rover-score-box">
-                <span class="rover-score-box__label">FINAL SCORE</span>
-                <span class="rover-score-box__val" id="rover-complete-score">1,000 / 1,000</span>
+            <!-- A. Main Score Section (The visual hero focus) -->
+            <div class="rover-complete-hero">
+              <h2 class="display-title text-plum rover-complete-hero__title" id="rover-complete-title">
+                MISSION COMPLETE!
+              </h2>
+              <div class="rover-complete-hero__score">
+                <span class="rover-complete-big-score" id="rover-complete-score">943</span>
+                <span class="rover-complete-max-score">/ 1,000</span>
               </div>
-              <div class="rover-score-box">
-                <span class="rover-score-box__label">BASE SCORE</span>
-                <span class="rover-score-box__val" id="rover-complete-base-score">800 / 800</span>
+              <p class="rover-complete-hero__explorer">
+                Explorer: <strong id="rover-complete-player-name">Explorer</strong>
+              </p>
+              <p class="rover-complete-hero__message" id="rover-complete-encouragement">
+                Moon explorer! You're doing amazing!
+              </p>
+            </div>
+
+            <!-- B. Compact Score Breakdown (Horizontal strip, not 6 separate cards) -->
+            <div class="rover-score-strip">
+              <div class="rover-score-chip">
+                <span class="rover-score-chip__label">BASE SCORE</span>
+                <span class="rover-score-chip__val" id="rover-complete-base-score">800 / 800</span>
               </div>
-              <div class="rover-score-box">
-                <span class="rover-score-box__label">TIME BONUS</span>
-                <span class="rover-score-box__val" id="rover-complete-time-bonus">+200 / 200</span>
+              <div class="rover-score-chip">
+                <span class="rover-score-chip__label">TIME BONUS</span>
+                <span class="rover-score-chip__val" id="rover-complete-time-bonus">+143 / 200</span>
               </div>
-              <div class="rover-score-box">
-                <span class="rover-score-box__label">COMPLETION TIME</span>
-                <span class="rover-score-box__val" id="rover-complete-time">00:00</span>
+              <div class="rover-score-chip">
+                <span class="rover-score-chip__label">COMPLETION TIME</span>
+                <span class="rover-score-chip__val" id="rover-complete-time">00:40</span>
               </div>
-              <div class="rover-score-box">
-                <span class="rover-score-box__label">BEST SCORE</span>
-                <span class="rover-score-box__val" id="rover-complete-best">1,000 / 1,000</span>
-              </div>
-              <div class="rover-score-box">
-                <span class="rover-score-box__label">SAMPLES</span>
-                <span class="rover-score-box__val" id="rover-complete-samples">3 / 3</span>
+              <div class="rover-score-chip">
+                <span class="rover-score-chip__label">SAMPLES</span>
+                <span class="rover-score-chip__val" id="rover-complete-samples">3 / 3</span>
               </div>
             </div>
 
-            <div class="rover-briefing-grid rover-complete-grid">
-              <figure class="rover-briefing-photo">
-                <button
-                  type="button"
-                  class="nasa-photo-launch-btn"
-                  data-nasa-photo-id="lrv-apollo15-return"
-                  data-nasa-context="APOLLO 15 HISTORICAL DEBRIEF"
-                  aria-label="View full-resolution NASA photograph: Lunar Roving Vehicle, Apollo 15 Mission"
-                >
-                  <img
-                    src="/assets/nasa/apollo15-lrv-return-trip.webp"
-                    alt="Apollo 15 Lunar Roving Vehicle on the lunar surface"
-                  />
-                  <span class="nasa-photo-launch-badge" aria-hidden="true">🔍 View in High-Res</span>
-                </button>
-                <figcaption>
-                  “The Lunar Rover helped the Apollo 15 crew transport geological equipment and collected samples across the lunar surface.”
-                  <strong>Credit: NASA/MSFC</strong> •
-                  <a
-                    href="https://www.nasa.gov/image-article/lunar-roving-vehicle-apollo-15-mission/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >Official Source ↗</a>
-                </figcaption>
-              </figure>
-
-              <div class="rover-briefing-details">
-                <div class="rover-briefing-box rover-complete-leaderboard-box">
-                  <div class="rover-complete-leaderboard-header">
-                    <p class="caption-orange">🏆 MISSION LEADERBOARD (TOP 5)</p>
-                    <span class="rover-leaderboard-status" id="rover-complete-submit-status">Recording score...</span>
-                  </div>
-                  <div id="rover-complete-leaderboard-table-wrap">
-                    <!-- Populated dynamically with top 5 rankings -->
-                  </div>
+            <!-- C & D. Clean Top 5 Leaderboard + Short Historical Takeaway -->
+            <div class="rover-complete-content-grid">
+              <div class="rover-complete-leaderboard-panel">
+                <div class="rover-complete-leaderboard-header">
+                  <h3 class="heading-sm text-plum">🏆 Top 5 Mission Explorers</h3>
+                  <span class="rover-leaderboard-status" id="rover-complete-submit-status">Score submitted!</span>
                 </div>
-
-                <div class="rover-briefing-box">
-                  <p class="caption-orange">APOLLO 15 HISTORICAL SUMMARY</p>
-                  <ul class="intro-highlights-list">
-                    <li><strong>Mission Distance:</strong> During Apollo 15, the Rover travelled 27.8 kilometres (approximately 28 km) over approximately 3 hours and 2 minutes of driving time.</li>
-                    <li><strong>Mission Science:</strong> The Apollo 15 crew returned approximately 77.31 kilograms of lunar samples. These materials helped scientists investigate the Moon's geological history.</li>
-                    <li><strong>Collectible Connection:</strong> All three Apollo Lunar Roving Vehicles remain on the Moon today at the Apollo 15, 16, and 17 landing sites.</li>
-                  </ul>
+                <div id="rover-complete-leaderboard-table-wrap">
+                  <!-- Dynamically populated with unique explorers -->
                 </div>
               </div>
+
+              <div class="rover-complete-takeaway-panel">
+                <p class="caption-orange">HISTORICAL TAKEAWAY</p>
+                <p class="body-sm text-plum rover-takeaway-quote">
+                  “During Apollo 15, the Lunar Rover travelled 27.8 km across the Moon, enabling astronauts to collect 77 kg of lunar samples that unlocked deep secrets of lunar history.”
+                </p>
+                <p class="rover-takeaway-credit">
+                  <strong>Apollo 15 • July 31 – August 2, 1971 • NASA</strong>
+                </p>
+              </div>
             </div>
 
-            <div class="rover-modal-card__actions">
+            <!-- E. Actions: Return to Toy Shop & Play Again -->
+            <div class="rover-modal-card__actions rover-complete-actions">
               <button type="button" class="btn btn--secondary" id="btn-rover-complete-shop">
                 <span>← Return to Toy Shop</span>
               </button>
-              <button type="button" class="btn btn--play-mission" id="btn-rover-play-again">
+              <button type="button" class="btn btn--play-mission btn--pulse-glow" id="btn-rover-play-again">
                 <img src="/assets/icon-play.svg" alt="" class="btn-play-mission__icon" aria-hidden="true" />
                 <span>Play Again</span>
               </button>
@@ -3735,7 +3725,77 @@ function updateRoverHudTime() {
 }
 
 /**
- * Fetch top 5 players from Google Apps Script Web App
+ * Process raw leaderboard data:
+ * - Groups entries by normalized explorer name (case-insensitive)
+ * - Keeps ONLY the highest score for each explorer
+ * - Eliminates duplicate rows for the same explorer
+ * - Sorts unique explorers descending by score
+ * - Slices top 5 unique explorers
+ * - Assigns shared rank for equal scores (ties)
+ */
+function processLeaderboardEntries(data, currentPlayerName = '', currentFinalScore = null) {
+  if (!Array.isArray(data)) return [];
+
+  const rawList = data
+    .filter((row) => row && typeof row === 'object')
+    .map((row) => {
+      const rawScore = row.stoppedAt !== undefined ? row.stoppedAt : row.score;
+      const scoreNum = Number(rawScore);
+      const rawName = typeof row.name === 'string' ? row.name.trim() : '';
+      return {
+        name: rawName,
+        score: Number.isFinite(scoreNum) ? scoreNum : null,
+      };
+    })
+    .filter((row) => {
+      if (!row.name || row.name.toLowerCase() === 'name') return false;
+      if (row.score === null || Number.isNaN(row.score)) return false;
+      return true;
+    });
+
+  // Deduplicate by normalized explorer name: keep highest score
+  const uniqueMap = new Map();
+  for (const item of rawList) {
+    const key = item.name.toLowerCase();
+    const existing = uniqueMap.get(key);
+    if (!existing || item.score > existing.score) {
+      uniqueMap.set(key, { name: item.name, score: item.score });
+    }
+  }
+
+  // Reflect current player's latest score in this session if higher
+  if (currentPlayerName && currentFinalScore !== null) {
+    const key = currentPlayerName.trim().toLowerCase();
+    const existing = uniqueMap.get(key);
+    if (!existing || currentFinalScore > existing.score) {
+      uniqueMap.set(key, { name: currentPlayerName.trim(), score: currentFinalScore });
+    }
+  }
+
+  // Sort unique explorers descending by score
+  const sorted = Array.from(uniqueMap.values()).sort((a, b) => b.score - a.score);
+
+  // Take top 5 unique explorers and compute shared rank for ties
+  const top5 = sorted.slice(0, 5);
+  let rank = 1;
+  return top5.map((entry, index) => {
+    if (index > 0) {
+      if (entry.score < top5[index - 1].score) {
+        rank = index + 1;
+      }
+    } else {
+      rank = 1;
+    }
+    return {
+      rank,
+      name: entry.name,
+      score: entry.score,
+    };
+  });
+}
+
+/**
+ * Fetch top 5 unique players from Google Apps Script Web App
  */
 async function fetchLeaderboard() {
   try {
@@ -3749,26 +3809,7 @@ async function fetchLeaderboard() {
     const data = await res.json();
     if (!Array.isArray(data)) return [];
 
-    const parsed = data
-      .filter((row) => row && typeof row === 'object')
-      .map((row) => {
-        const rawScore = row.stoppedAt !== undefined ? row.stoppedAt : row.score;
-        const scoreNum = Number(rawScore);
-        const rawName = typeof row.name === 'string' ? row.name.trim() : '';
-        return {
-          name: rawName,
-          score: Number.isFinite(scoreNum) ? scoreNum : null,
-          timestamp: row.timestamp || null,
-        };
-      })
-      .filter((row) => {
-        if (!row.name || row.name.toLowerCase() === 'name') return false;
-        if (row.score === null || Number.isNaN(row.score)) return false;
-        return true;
-      })
-      .sort((a, b) => b.score - a.score);
-
-    return parsed.slice(0, 5);
+    return processLeaderboardEntries(data);
   } catch (err) {
     console.warn('[ORBITOYS] Could not fetch remote leaderboard:', err);
     return null;
@@ -3806,19 +3847,15 @@ function renderLeaderboardRows(data, currentPlayerName, currentFinalScore = null
     `;
   }
 
-  const top5 = data.slice(0, 5);
-  const rowsHtml = top5
-    .map((item, idx) => {
-      const rank = idx + 1;
-      const rankMedal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
-      const isPlayer =
-        currentPlayerName &&
-        item.name.toLowerCase() === currentPlayerName.toLowerCase() &&
-        (currentFinalScore === null || item.score === currentFinalScore);
+  const normalizedCurrent = (currentPlayerName || '').trim().toLowerCase();
+  const rowsHtml = data
+    .map((item) => {
+      const isPlayer = normalizedCurrent && item.name.toLowerCase() === normalizedCurrent;
+      const rankBadge = item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : `#${item.rank}`;
 
       return `
         <tr class="rover-leaderboard-row ${isPlayer ? 'is-current-player' : ''}">
-          <td class="rover-lb-rank"><span class="rover-lb-rank-badge">${rankMedal}</span></td>
+          <td class="rover-lb-rank"><span class="rover-lb-rank-badge">${rankBadge}</span></td>
           <td class="rover-lb-name">
             <strong>${escapeHtml(item.name)}</strong>
             ${isPlayer ? '<span class="rover-lb-you-badge">YOU</span>' : ''}
@@ -3848,31 +3885,28 @@ function renderLeaderboardRows(data, currentPlayerName, currentFinalScore = null
 function renderCompleteLeaderboardTable(data, playerName, finalScore) {
   const container = document.querySelector('#rover-complete-leaderboard-table-wrap');
   if (!container) return;
-  container.innerHTML = renderLeaderboardRows(data, playerName, finalScore);
-  updateDebriefPlayerRank(data, playerName, finalScore);
+  const processed = Array.isArray(data) && data[0]?.rank !== undefined
+    ? data
+    : processLeaderboardEntries(data, playerName, finalScore);
+  container.innerHTML = renderLeaderboardRows(processed, playerName, finalScore);
+  updateDebriefPlayerRank(processed, playerName, finalScore);
 }
 
 function updateDebriefPlayerRank(data, playerName, finalScore) {
   const rankText = document.querySelector('#rover-complete-rank-text');
   if (!rankText) return;
 
+  const normalized = (playerName || '').trim().toLowerCase();
   if (!data || !Array.isArray(data) || data.length === 0) {
     rankText.textContent = 'RANK #1';
     return;
   }
 
-  const idx = data.findIndex(
-    (item) => item.name.toLowerCase() === (playerName || '').toLowerCase() && item.score === finalScore
-  );
-  if (idx !== -1) {
-    const rankNum = idx + 1;
-    rankText.textContent = rankNum === 1 ? '🥇 #1 CHAMPION' : `RANK #${rankNum}`;
+  const found = data.find((item) => item.name.toLowerCase() === normalized);
+  if (found) {
+    rankText.textContent = found.rank === 1 ? '🥇 #1 CHAMPION' : `RANK #${found.rank}`;
   } else {
-    if (finalScore >= (data[0]?.score || 0)) {
-      rankText.textContent = 'TOP SCORE!';
-    } else {
-      rankText.textContent = 'SCORE SUBMITTED';
-    }
+    rankText.textContent = 'SCORE SUBMITTED';
   }
 }
 
@@ -4445,16 +4479,19 @@ function completeRoverMission() {
   }
 
   const scoreEl = document.querySelector('#rover-complete-score');
-  if (scoreEl) scoreEl.textContent = `${g.finalScore} / 1,000`;
+  if (scoreEl) scoreEl.textContent = String(g.finalScore);
 
   const baseScoreEl = document.querySelector('#rover-complete-base-score');
   if (baseScoreEl) baseScoreEl.textContent = `${g.baseScore} / 800`;
 
   const timeBonusEl = document.querySelector('#rover-complete-time-bonus');
-  if (timeBonusEl) timeBonusEl.textContent = `+${g.timeBonus} / 200 PTS`;
+  if (timeBonusEl) timeBonusEl.textContent = `+${g.timeBonus} / 200`;
 
   const timeEl = document.querySelector('#rover-complete-time');
   if (timeEl) timeEl.textContent = timeFormatted;
+
+  const bestPill = document.querySelector('#rover-complete-best-pill');
+  if (bestPill) bestPill.textContent = `BEST: ${state.bestRoverScore} / 1,000 PTS`;
 
   const bestEl = document.querySelector('#rover-complete-best');
   if (bestEl) bestEl.textContent = `${state.bestRoverScore} / 1,000`;
@@ -4462,11 +4499,6 @@ function completeRoverMission() {
   const samplesEl = document.querySelector('#rover-complete-samples');
   if (samplesEl) {
     samplesEl.textContent = `${g.collectedSamples.size} / ${LRV_MISSION_LOCATIONS.length}`;
-  }
-
-  const cluesEl = document.querySelector('#rover-complete-clues');
-  if (cluesEl) {
-    cluesEl.textContent = `${g.collectedClues.size} / ${LRV_MISSION_CLUES.length}`;
   }
 
   // Initial render of cached leaderboard or placeholder

@@ -198,9 +198,10 @@ button:disabled {
 @media (min-width: 768px) {
   body[data-screen='shelf'] .audio-controls,
   body[data-screen='discovery'] .audio-controls,
-  body[data-screen='interactive'] .audio-controls {
+  body[data-screen='interactive'] .audio-controls,
+  body[data-screen='rover-game'] .audio-controls {
     right: auto;
-    left: 60%;
+    left: 56%;
     transform: translateX(-50%);
     top: 12px;
   }
@@ -712,6 +713,40 @@ button:disabled {
 .story-stage--dialogue {
   max-width: 100%;
   justify-content: flex-end;
+}
+
+.dialogue-skip-btn {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background-color: rgba(41, 34, 56, 0.88);
+  border: 1.5px solid var(--color-amber);
+  color: var(--color-cream);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9rem;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  transition: background-color 0.18s ease, color 0.18s ease, transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.dialogue-skip-btn:hover {
+  background-color: var(--color-amber);
+  color: var(--color-plum);
+  box-shadow: var(--shadow-btn-hover);
+  transform: translateY(-1px);
+}
+
+.dialogue-skip-btn:active {
+  transform: translateY(0) scale(0.97);
 }
 
 .dialogue-backgrounds {
@@ -1599,6 +1634,131 @@ button:disabled {
   margin-top: 2px;
 }
 
+/* NASA Archival Photograph Thumbnail Strip in Field Notes */
+.field-notes-card__photos {
+  margin-top: 4px;
+}
+
+.nasa-photos-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.nasa-thumb-btn {
+  width: 100%;
+  background-color: rgba(41, 34, 56, 0.06);
+  border: 1.5px solid rgba(41, 34, 56, 0.18);
+  border-radius: 14px;
+  padding: 7px 9px;
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  color: var(--color-plum);
+  transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.nasa-thumb-btn:hover {
+  background-color: rgba(233, 180, 91, 0.25);
+  border-color: var(--color-orange);
+  box-shadow: var(--shadow-btn-default);
+  transform: translateY(-1px);
+}
+
+.nasa-thumb-btn:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.nasa-thumb-btn:focus-visible {
+  outline-color: var(--color-plum);
+}
+
+.nasa-thumb-btn__media {
+  position: relative;
+  width: 84px;
+  height: 62px;
+  border-radius: 9px;
+  overflow: hidden;
+  background-color: var(--color-plum);
+  border: 1px solid rgba(41, 34, 56, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nasa-thumb-btn__media.has-fallback::after {
+  content: 'NASA PHOTO';
+  font-family: var(--font-display);
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--color-amber);
+  text-align: center;
+  padding: 4px;
+}
+
+.nasa-thumb-btn__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.nasa-thumb-btn__img.is-broken {
+  display: none;
+}
+
+.nasa-thumb-btn__zoom-badge {
+  position: absolute;
+  bottom: 3px;
+  right: 3px;
+  background-color: rgba(41, 34, 56, 0.86);
+  color: var(--color-amber);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.56rem;
+  padding: 1px 5px;
+  border-radius: 999px;
+}
+
+.nasa-thumb-btn__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nasa-thumb-btn__overline {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-orange);
+}
+
+.nasa-thumb-btn__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(0.76rem, 0.9vw, 0.86rem);
+  color: var(--color-plum);
+  line-height: 1.18;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nasa-thumb-btn__caption {
+  font-size: clamp(0.68rem, 0.78vw, 0.75rem);
+  color: rgba(41, 34, 56, 0.84);
+  line-height: 1.24;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .field-notes-card__progress {
   display: flex;
   flex-direction: column;
@@ -1853,30 +2013,729 @@ button:disabled {
   object-fit: contain;
 }
 
-.briefing-card {
-  width: min(640px, 100%);
-  max-height: calc(100dvh - 32px);
-  background-color: var(--color-cream);
+/* Reusable In-Game NASA Archival Photograph Viewer Modal */
+.nasa-viewer-modal {
+  width: min(980px, 100%);
+  height: min(90dvh, 820px);
+  background-color: var(--color-surface);
   border: 2px solid var(--color-amber);
   border-radius: 24px;
-  padding: clamp(20px, 3vh, 30px) clamp(20px, 3vw, 36px);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5), var(--shadow-shelf-hover);
+  padding: clamp(14px, 2vh, 20px) clamp(16px, 2.2vw, 24px);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.68), var(--shadow-shelf-hover);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.nasa-viewer-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.nasa-viewer-modal__titles {
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.nasa-viewer-modal__controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.nasa-open-original-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  text-decoration: none;
+}
+
+.nasa-viewer-modal__stage {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background-color: #100c19;
+  border: 1.5px solid rgba(233, 180, 91, 0.32);
+  border-radius: 16px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.nasa-viewer-modal__stage.is-zoomed {
+  overflow: auto;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.nasa-viewer-modal__img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: 10px;
+  cursor: zoom-in;
+  transition: transform 0.2s ease;
+}
+
+.nasa-viewer-modal__stage.is-zoomed .nasa-viewer-modal__img {
+  max-width: none;
+  max-height: none;
+  width: 155%;
+  margin: 0 auto;
+  cursor: zoom-out;
+}
+
+.nasa-viewer-modal__fallback {
+  text-align: center;
+  padding: 24px;
+  color: var(--color-cream);
+}
+
+.nasa-viewer-modal__footer {
+  background-color: var(--color-cream);
+  color: var(--color-plum);
+  border-radius: 16px;
+  padding: 10px 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
 }
 
-.briefing-card__body {
-  margin-top: 6px;
-}
-
-.briefing-card__actions {
-  margin-top: 12px;
+.nasa-viewer-meta-chips {
   display: flex;
   flex-wrap: wrap;
+  gap: 6px;
+}
+
+.nasa-meta-chip {
+  font-size: 0.72rem;
+  background-color: rgba(41, 34, 56, 0.08);
+  border: 1px solid rgba(41, 34, 56, 0.16);
+  border-radius: 8px;
+  padding: 3px 8px;
+  color: var(--color-plum);
+}
+
+.nasa-meta-chip strong {
+  color: var(--color-orange);
+}
+
+.nasa-viewer-modal__caption {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(0.84rem, 1vw, 0.96rem);
+  color: var(--color-plum);
+  line-height: 1.28;
+}
+
+.nasa-viewer-modal__bottom-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nasa-viewer-modal__desc {
+  flex: 1 1 320px;
+  font-size: clamp(0.74rem, 0.85vw, 0.82rem);
+  line-height: 1.32;
+  color: rgba(41, 34, 56, 0.86);
+}
+
+.nasa-viewer-source-link {
+  flex-shrink: 0;
+}
+
+/* ==========================================================================
+   SCREEN 8: PLAYABLE APOLLO 15 LUNAR ROVER MISSION (#screen-rover-game)
+   ========================================================================== */
+.screen--rover-game {
+  background-color: var(--color-plum);
+}
+
+.rover-game-shell {
+  width: 100%;
+  max-width: 1680px;
+  height: 100%;
+  margin: 0 auto;
+  padding: clamp(8px, 1.4vh, 16px) clamp(12px, 2vw, 28px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: clamp(6px, 1vh, 12px);
+  overflow: hidden;
+}
+
+/* Compact Game HUD */
+.rover-hud {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+  background-color: var(--color-surface);
+  border: 1.5px solid rgba(233, 180, 91, 0.35);
+  border-radius: 16px;
+  padding: clamp(6px, 1vh, 10px) clamp(12px, 1.5vw, 18px);
+}
+
+.rover-hud__brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.rover-hud__objective {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(0.88rem, 1.25vw, 1.12rem);
+  color: var(--color-cream);
+  line-height: 1.2;
+}
+
+.rover-hud__stats {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 0.8vw, 10px);
+  flex-wrap: wrap;
+}
+
+.rover-stat-card {
+  background-color: rgba(41, 34, 56, 0.72);
+  border: 1px solid rgba(233, 180, 91, 0.35);
+  border-radius: 11px;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.rover-stat-card--best {
+  border-color: var(--color-amber);
+  background-color: rgba(233, 180, 91, 0.14);
+}
+
+.rover-stat-card__label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-amber);
+}
+
+.rover-stat-card__value {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(0.88rem, 1.1vw, 1.04rem);
+  color: var(--color-cream);
+}
+
+.rover-stat-card__max {
+  font-size: 0.72rem;
+  color: rgba(243, 232, 213, 0.68);
+}
+
+.btn-rover-pause {
+  height: 34px;
+  padding: 0 13px;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: var(--color-plum);
+  background-color: var(--color-amber);
+  box-shadow: var(--shadow-btn-default);
+  transition: transform 0.18s ease, background-color 0.18s ease;
+}
+
+.btn-rover-pause:hover {
+  background-color: var(--color-yellow-hover);
+  transform: translateY(-1px);
+}
+
+/* 2D Canvas Stage Container (Scales 16:9 canvas inside available viewport space) */
+.rover-stage-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  container-type: size;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #120e1c;
+  border: 2px solid rgba(233, 180, 91, 0.42);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: inset 0 0 28px rgba(0, 0, 0, 0.65);
+}
+
+.rover-game-canvas {
+  width: min(100cqw, calc(100cqh * 1280 / 720));
+  height: min(100cqh, calc(100cqw * 720 / 1280));
+  aspect-ratio: 1280 / 720;
+  display: block;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+
+/* Proximity Sample Collection Action Prompt */
+.rover-proximity-bar {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 12;
+  pointer-events: auto;
+}
+
+.rover-collect-btn {
+  min-height: 44px;
+  padding: 0 20px;
+  font-size: clamp(0.86rem, 1.05vw, 1rem);
+  animation: pulseCollectBtn 1.2s ease-in-out infinite;
+}
+
+@keyframes pulseCollectBtn {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+/* Historical Field Note / Sample Discovery Toast */
+.rover-discovery-toast {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 15;
+  width: min(410px, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  background-color: var(--color-cream);
+  color: var(--color-plum);
+  border: 2.5px solid var(--color-amber);
+  border-radius: 18px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.58), var(--shadow-shelf-hover);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.rover-discovery-toast.is-animating {
+  animation: toastSlideIn 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes toastSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.rover-discovery-toast__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rover-discovery-toast__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(0.95rem, 1.15vw, 1.08rem);
+  color: var(--color-plum);
+  line-height: 1.2;
+}
+
+.rover-discovery-toast__header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.rover-toast-points {
+  background-color: var(--color-amber);
+  color: var(--color-plum);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.72rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+
+.rover-toast-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background-color: rgba(41, 34, 56, 0.1);
+  color: var(--color-plum);
+  font-weight: 700;
+  font-size: 0.78rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rover-toast-close:hover {
+  background-color: var(--color-orange);
+  color: var(--color-cream);
+}
+
+.rover-discovery-toast__body {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.rover-discovery-toast__media[hidden] + .rover-discovery-toast__copy {
+  grid-column: 1 / -1;
+}
+
+.rover-discovery-toast__media {
+  width: 112px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1.5px solid rgba(41, 34, 56, 0.2);
+  background-color: var(--color-plum);
+}
+
+.rover-discovery-toast__media img {
+  width: 100%;
+  height: 82px;
+  object-fit: cover;
+}
+
+.rover-toast-illustrated-rille {
+  width: 100%;
+  height: 82px;
+  padding: 8px;
+  background: linear-gradient(180deg, #1b1528 0%, #5b4e49 48%, #d7b899 56%, #292238 100%);
+  color: var(--color-cream);
+  font-family: var(--font-display);
+  font-size: 0.64rem;
+  font-weight: 600;
+  display: flex;
+  align-items: flex-end;
+  text-align: left;
+  line-height: 1.2;
+}
+
+.rover-discovery-toast__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.rover-discovery-toast__fact {
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.32;
+  color: var(--color-plum);
+}
+
+.rover-discovery-toast__caption {
+  font-size: 0.72rem;
+  line-height: 1.28;
+  color: rgba(41, 34, 56, 0.82);
+}
+
+.rover-discovery-toast__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rover-toast-credit {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--color-orange);
+}
+
+/* Bottom Driving Controls Bar */
+.rover-controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background-color: var(--color-surface);
+  border-radius: 14px;
+  padding: clamp(6px, 0.9vh, 10px) clamp(12px, 1.5vw, 18px);
+}
+
+.rover-controls-bar__hints {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rover-control-chip {
+  font-size: clamp(0.72rem, 0.85vw, 0.82rem);
+  color: var(--color-cream);
+  background-color: rgba(41, 34, 56, 0.65);
+  border: 1px solid rgba(243, 232, 213, 0.16);
+  border-radius: 8px;
+  padding: 4px 9px;
+}
+
+.rover-control-chip strong {
+  color: var(--color-amber);
+}
+
+.rover-touch-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.rover-dpad {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  user-select: none;
+  touch-action: none;
+}
+
+.rover-dpad__vert {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dpad-btn {
+  width: 40px;
+  height: 34px;
+  border-radius: 9px;
+  background-color: rgba(233, 180, 91, 0.2);
+  border: 1.5px solid var(--color-amber);
+  color: var(--color-cream);
+  font-size: 0.88rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  touch-action: none;
+  transition: background-color 0.12s ease, transform 0.12s ease;
+}
+
+.dpad-btn:hover,
+.dpad-btn.is-pressed {
+  background-color: var(--color-amber);
+  color: var(--color-plum);
+  transform: scale(0.95);
+}
+
+.rover-touch-collect-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 0.82rem;
+}
+
+.rover-touch-collect-btn:disabled {
+  background-color: var(--color-disabled-fill);
+  color: var(--color-disabled-ink);
+  box-shadow: none;
+  opacity: 0.65;
+}
+
+/* Overlays inside #screen-rover-game (Briefing, Pause, Complete) */
+.rover-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background-color: rgba(18, 14, 28, 0.84);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(10px, 2vh, 22px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.22s ease, visibility 0.22s ease;
+}
+
+.rover-overlay.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.rover-modal-card {
+  width: min(880px, 100%);
+  max-height: calc(100dvh - 28px);
+  background-color: var(--color-cream);
+  color: var(--color-plum);
+  border: 2.5px solid var(--color-amber);
+  border-radius: 24px;
+  padding: clamp(14px, 2.2vh, 24px) clamp(16px, 2.4vw, 28px);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6), var(--shadow-shelf-hover);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.2vh, 12px);
+  overflow-y: auto;
+}
+
+.rover-modal-card--compact {
+  width: min(460px, 100%);
+  text-align: center;
+  align-items: center;
+}
+
+.rover-modal-card__top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rover-modal-card__lead {
+  font-size: clamp(0.84rem, 1vw, 0.96rem);
+  line-height: 1.36;
+}
+
+.rover-briefing-grid {
+  display: grid;
+  grid-template-columns: minmax(210px, 36%) minmax(0, 64%);
+  gap: clamp(10px, 1.6vw, 18px);
+  align-items: start;
+}
+
+.rover-briefing-photo {
+  background-color: var(--color-surface);
+  color: var(--color-cream);
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1.5px solid rgba(41, 34, 56, 0.25);
+  display: flex;
+  flex-direction: column;
+}
+
+.rover-briefing-photo img {
+  width: 100%;
+  height: clamp(120px, 18vh, 175px);
+  object-fit: cover;
+}
+
+.rover-briefing-photo figcaption {
+  padding: 8px 11px;
+  font-size: 0.72rem;
+  line-height: 1.32;
+  color: rgba(243, 232, 213, 0.9);
+}
+
+.rover-briefing-photo figcaption a {
+  color: var(--color-amber);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.rover-briefing-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rover-briefing-box {
+  background-color: rgba(41, 34, 56, 0.06);
+  border: 1px solid rgba(41, 34, 56, 0.14);
+  border-radius: 14px;
+  padding: 8px 12px;
+}
+
+.rover-historical-note {
+  font-size: 0.78rem;
+  line-height: 1.32;
+  color: var(--color-plum);
+  background-color: rgba(233, 180, 91, 0.22);
+  border-left: 3px solid var(--color-orange);
+  padding: 6px 10px;
+  border-radius: 8px;
+}
+
+.rover-modal-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.rover-pause-actions {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.rover-pause-actions .btn {
+  width: 100%;
+}
+
+.rover-score-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rover-score-box {
+  background-color: var(--color-surface);
+  color: var(--color-cream);
+  border: 1.5px solid var(--color-amber);
+  border-radius: 14px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 2px;
+}
+
+.rover-score-box__label {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-amber);
+}
+
+.rover-score-box__val {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(0.96rem, 1.3vw, 1.25rem);
+  color: var(--color-cream);
 }
 
 /* ==========================================================================
@@ -1925,6 +2784,10 @@ button:disabled {
     justify-content: center;
     padding: 24px;
   }
+
+  .rover-briefing-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 767px) {
@@ -1934,7 +2797,8 @@ button:disabled {
   body[data-screen='dialogue'] .audio-controls,
   body[data-screen='shelf'] .audio-controls,
   body[data-screen='discovery'] .audio-controls,
-  body[data-screen='interactive'] .audio-controls {
+  body[data-screen='interactive'] .audio-controls,
+  body[data-screen='rover-game'] .audio-controls {
     top: 8px;
     bottom: auto;
     right: 10px;
@@ -2184,6 +3048,75 @@ button:disabled {
     min-height: 34px;
     padding: 0 10px;
     font-size: 0.76rem;
+  }
+
+  /* Playable Rover Game mobile adjustments */
+  .rover-game-shell {
+    padding: 6px 8px 8px;
+    gap: 5px;
+  }
+
+  .rover-hud {
+    padding: 6px 10px;
+    padding-right: 120px;
+    gap: 6px;
+  }
+
+  .rover-hud__objective {
+    font-size: 0.76rem;
+  }
+
+  .rover-stat-card {
+    padding: 2px 7px;
+  }
+
+  .rover-stat-card__label {
+    font-size: 0.58rem;
+  }
+
+  .rover-stat-card__value {
+    font-size: 0.78rem;
+  }
+
+  .btn-rover-pause {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 0.74rem;
+  }
+
+  .rover-controls-bar {
+    padding: 6px 10px;
+    justify-content: center;
+  }
+
+  .rover-controls-bar__hints {
+    display: none;
+  }
+
+  .rover-touch-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .rover-discovery-toast {
+    top: 6px;
+    right: 6px;
+    left: 6px;
+    width: auto;
+    padding: 8px 10px;
+  }
+
+  .rover-discovery-toast__body {
+    grid-template-columns: 84px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .rover-discovery-toast__media {
+    width: 84px;
+  }
+
+  .rover-score-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   /* Story & Dialogue mobile adjustments */

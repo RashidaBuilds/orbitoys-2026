@@ -90,7 +90,7 @@ Derived from the Figma design file (`node-id=98-1717`, Section `"Screens"`).
 
 ## 5. Machine Selection Shelf (`#79:1700`, `1440 × 1104`)
 
-- **Header**: Heading *"Choose a machine to explore!"*, subtitle *"Pick a collectible to uncover its mission."*, right caption *"SPACE EXPLORATION COLLECTION"*.
+- **Header**: Heading *"Choose a machine to explore!"*, subtitle *"Pick a collectible to uncover its mission."*, right caption *"SPACE EXPLORATION COLLECTION"*, and secondary CTA `"Exit Game"` (`#btn-shelf-exit-game`, navigates to Screen 1: Title Screen).
 - **Shelf Illustration**: `public/assets/store-shelf.png` (`1477.41 × 831.98` at `x: -19, y: 96`).
 - **Collectible Hit Areas** (`borderRadius: 24px`):
   1. **Apollo Lunar Module**: `x: 270, y: 406`, `208 × 365`
@@ -150,6 +150,30 @@ Derived from the Figma design file (`node-id=98-1717`, Section `"Screens"`).
   - Heading: *"Built for a world without roads."*
   - Body: *"Discover all three parts, then return to the shelf to meet another machine."*
   - CTA Button: `"Back to shelf"` (`x: 1150, y: 12`)
+
+---
+
+## 8. Playable Apollo 15 Lunar Rover Mission (`#screen-rover-game`)
+
+### A. Mission Briefing Screen (`#rover-briefing-overlay`)
+- **Single Entry Point**: Modifies the existing briefing overlay without adding separate registration screens.
+- **Explorer Name Registration**: Compact input (`#rover-player-name-input`) requiring 1–20 characters, trimmed, validated, HTML-escaped, and persisted in `localStorage`.
+- **Top 5 Leaderboard Control**: Button `"🏆 View Leaderboard"` (`#btn-rover-open-leaderboard`) opening modal popover (`#rover-leaderboard-modal`). Displays top 5 players sorted descending from Google Sheets, highlighting the current player. Closing returns directly to the exact briefing screen without starting the timer.
+- **Scoring Display & Time Bonus**:
+  - 800 Base Points (3 Samples = 300 pts, 3 Clues = 150 pts, Safe Return = 100 pts, Mission Completion = 250 pts).
+  - Up to 200 Time-Bonus Points.
+  - Total Maximum: 1,000 Points (`BEST SCORE: 0 / 1,000 PTS`).
+  - Subtle note: *"Complete your mission faster to earn up to 200 bonus points!"*.
+
+### B. Gameplay Timer & In-Game HUD
+- **Timer Start**: Starts strictly when the player clicks `"Start Mission"` after passing Explorer Name validation.
+- **Pause & Resume**: Pausing stops timer accumulation; resuming continues from elapsed gameplay time; tab hiding pauses automatically.
+- **HUD Active Timer**: Displays formatted MM:SS elapsed time (`#rover-hud-time`) and score max `/ 1,000`.
+
+### C. Mission Complete Debrief & Google Sheets Submission
+- **Results Modal (`#rover-complete-overlay`)**: Displays Explorer Name, Base Score (`/ 800`), Time Bonus (`/ 200`), Final Combined Score (`/ 1,000`), Completion Time, Best Score, and Top 5 Leaderboard table.
+- **Google Sheets API**: Deployed Apps Script endpoint (`VITE_LEADERBOARD_SCRIPT_URL`). Submits score once via POST (`{ name: playerName, stoppedAt: finalScore, diff: 'Score' }`), fetches updated rankings, and highlights the player's rank.
+- **Play Again**: Returns to the mission briefing overlay with the player's name retained in the input field.
 
 ---
 

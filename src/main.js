@@ -711,6 +711,87 @@ const SHELF_MACHINES = [
 // User-provided soundtrack path in public/assets/audio/
 const THEME_AUDIO_SRC = '/assets/audio/orbitoys-theme.mp3';
 const BEST_SCORE_STORAGE_KEY = 'orbitoys_lrv_best_score';
+const EXPLORER_NAME_STORAGE_KEY = 'orbitoys_explorer_name';
+
+/**
+ * Google Apps Script Leaderboard Endpoint & Scoring Configuration
+ */
+const LEADERBOARD_SCRIPT_URL =
+  import.meta.env?.VITE_LEADERBOARD_SCRIPT_URL ||
+  'https://script.google.com/macros/s/AKfycbzGKQrlacnFi6os69c7OIq0HOzPQvNYQg8MNY4iEP_j3j90StgmVdpaWIEy0VMyBpFA/exec';
+
+const TIME_SCORING_CONFIG = {
+  MAX_TIME_BONUS: 200,
+  FULL_TIME_BONUS_SECONDS: 180, // 3 minutes for maximum 200 time bonus points
+  NO_TIME_BONUS_AFTER_SECONDS: 360, // 6 minutes; beyond this, 0 time bonus points
+};
+
+/**
+ * HTML Escaping helper to sanitize user-provided text before displaying
+ */
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Load saved explorer name from localStorage
+ */
+function loadSavedExplorerName() {
+  try {
+    const raw = window.localStorage?.getItem(EXPLORER_NAME_STORAGE_KEY);
+    return typeof raw === 'string' ? raw.trim().slice(0, 20) : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Persist explorer name to localStorage
+ */
+function saveExplorerName(name) {
+  try {
+    const clean = String(name || '').trim().slice(0, 20);
+    if (clean) {
+      window.localStorage?.setItem(EXPLORER_NAME_STORAGE_KEY, clean);
+    }
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+/**
+ * Time formatting helper: converts seconds to MM:SS
+ */
+function formatTime(totalSeconds) {
+  const safeSecs = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const mins = Math.floor(safeSecs / 60);
+  const secs = safeSecs % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+/**
+ * Calculate dynamic time bonus based on elapsed seconds
+ */
+function calculateTimeBonus(elapsedSeconds) {
+  const { MAX_TIME_BONUS, FULL_TIME_BONUS_SECONDS, NO_TIME_BONUS_AFTER_SECONDS } = TIME_SCORING_CONFIG;
+  const safeSecs = Math.max(0, Number(elapsedSeconds) || 0);
+
+  if (safeSecs <= FULL_TIME_BONUS_SECONDS) {
+    return MAX_TIME_BONUS;
+  }
+  if (safeSecs >= NO_TIME_BONUS_AFTER_SECONDS) {
+    return 0;
+  }
+  const span = NO_TIME_BONUS_AFTER_SECONDS - FULL_TIME_BONUS_SECONDS;
+  const overtime = safeSecs - FULL_TIME_BONUS_SECONDS;
+  const remainingFraction = (span - overtime) / span;
+  return Math.round(MAX_TIME_BONUS * Math.max(0, Math.min(1, remainingFraction)));
+}
 
 /**
  * Verified NASA Archival Photographs & Component Mapping (`public/assets/nasa/`)
@@ -1077,7 +1158,9 @@ const LRV_MISSION_LOCATIONS = [
     points: 100,
     sampleName: 'Basalt & Regolith Sample',
     fact: "Apollo 15's first Rover traverse travelled towards Elbow Crater, where the astronauts collected and documented geological samples.",
+    photoId: 'apollo15-on-moon',
     photo: {
+      id: 'apollo15-on-moon',
       src: '/assets/nasa/apollo15-on-moon.jpg',
       caption:
         "During Apollo 15's first lunar surface excursion, the crew worked with the Lunar Roving Vehicle at the Hadley-Apennine landing site.",
@@ -1097,7 +1180,9 @@ const LRV_MISSION_LOCATIONS = [
     points: 100,
     sampleName: 'Highland Anorthosite Sample',
     fact: 'During the second traverse, the crew explored the Apennine Front and visited Spur Crater to investigate the surrounding lunar geology.',
+    photoId: 'lrv-apollo15-return',
     photo: {
+      id: 'lrv-apollo15-return',
       src: '/assets/nasa/apollo15-lrv-return-trip.webp',
       caption:
         'The Lunar Rover helped the Apollo 15 crew transport geological equipment and collected samples across the lunar surface.',
@@ -1117,7 +1202,9 @@ const LRV_MISSION_LOCATIONS = [
     points: 100,
     sampleName: 'Rille Rim Volcanic Sample',
     fact: "During Apollo 15's third geological traverse, astronauts photographed exposed layers along the west wall of Hadley Rille.",
+    photoId: 'apollo15-hadley-rille-rover',
     photo: {
+      id: 'apollo15-hadley-rille-rover',
       src: '/assets/nasa/HADLEY%20RILLE-EXPOSED-LAVA-LAYERS.jpg',
       caption:
         "Hadley Rille was one of the remarkable geological features explored during Apollo 15. The Rover helped extend the crew's reach across this rugged terrain.",
@@ -1223,6 +1310,7 @@ const state = {
   activeNasaPhotoId: null,
   isNasaPhotoZoomed: false,
   lastNasaThumbTrigger: null,
+  roverWasPlayingBeforePhoto: false,
   isMissionPreviewOpen: false,
   entranceTimer: null,
   musicEnabled: true,
@@ -1232,6 +1320,17 @@ const state = {
   roverGame: {
     phase: 'briefing', // 'briefing' | 'playing' | 'paused' | 'completed'
     score: 0,
+    baseScore: 0,
+    timeBonus: 0,
+    finalScore: 0,
+    playerName: loadSavedExplorerName(),
+    scoreSubmitted: false,
+    cachedLeaderboard: [],
+    timer: {
+      startTime: 0,
+      elapsedMs: 0,
+      isRunning: false,
+    },
     rover: {
       x: 640,
       y: 470,
@@ -1929,7 +2028,19 @@ function buildApp() {
               <h1 class="heading-lg">Choose a machine to explore!</h1>
               <p class="body-md">Click a collectible once to select it, then click again or press Explore to open its story.</p>
             </div>
-            <p class="caption-amber shelf-header__collection">SPACE EXPLORATION COLLECTION</p>
+            <div class="shelf-header__actions">
+              <p class="caption-amber shelf-header__collection">SPACE EXPLORATION COLLECTION</p>
+              <button
+                type="button"
+                class="btn btn--secondary btn--shelf-exit"
+                id="btn-shelf-exit-game"
+                data-sfx-hover="true"
+                aria-label="Exit game and return to title screen"
+              >
+                <span class="btn-arrow-left" aria-hidden="true">←</span>
+                <span>Exit Game</span>
+              </button>
+            </div>
           </header>
 
           <!-- Shelf visual stage scaled to fit available viewport height while preserving 1671:941 ratio -->
@@ -2194,7 +2305,11 @@ function buildApp() {
               <div class="rover-stat-card">
                 <span class="rover-stat-card__label">SCORE</span>
                 <span class="rover-stat-card__value" id="rover-hud-score">0</span>
-                <span class="rover-stat-card__max">/ 800</span>
+                <span class="rover-stat-card__max">/ 1,000</span>
+              </div>
+              <div class="rover-stat-card rover-stat-card--time">
+                <span class="rover-stat-card__label">TIME</span>
+                <span class="rover-stat-card__value" id="rover-hud-time">00:00</span>
               </div>
               <div class="rover-stat-card">
                 <span class="rover-stat-card__label">SAMPLES</span>
@@ -2263,7 +2378,15 @@ function buildApp() {
               </div>
               <div class="rover-discovery-toast__body">
                 <div class="rover-discovery-toast__media" id="rover-toast-media" hidden>
-                  <img id="rover-toast-img" src="" alt="" />
+                  <button
+                    type="button"
+                    class="rover-toast-photo-btn"
+                    id="btn-rover-toast-photo"
+                    aria-label="View full-resolution NASA archival photograph"
+                  >
+                    <img id="rover-toast-img" src="" alt="" />
+                    <span class="rover-toast-photo-badge" aria-hidden="true">🔍 View</span>
+                  </button>
                   <div class="rover-toast-illustrated-rille" id="rover-toast-rille-art" hidden>
                     <span>HADLEY RILLE — EXPOSED LAVA LAYERS (AS15-85-11451)</span>
                   </div>
@@ -2323,9 +2446,21 @@ function buildApp() {
           <div class="rover-modal-card">
             <div class="rover-modal-card__top-row">
               <p class="caption-orange">APOLLO 15  /  HADLEY–APENNINE  /  JULY 31, 1971</p>
-              <span class="machine-status-pill machine-status-pill--playable" id="rover-briefing-best-pill">
-                BEST SCORE: 0 / 800 PTS
-              </span>
+              <div class="rover-briefing-top-controls">
+                <button
+                  type="button"
+                  class="btn-rover-leaderboard-trigger"
+                  id="btn-rover-open-leaderboard"
+                  aria-haspopup="dialog"
+                  aria-label="View Apollo 15 mission leaderboard"
+                >
+                  <span aria-hidden="true">🏆</span>
+                  <span>View Leaderboard</span>
+                </button>
+                <span class="machine-status-pill machine-status-pill--playable" id="rover-briefing-best-pill">
+                  BEST SCORE: 0 / 1,000 PTS
+                </span>
+              </div>
             </div>
             <h2 class="heading-lg text-plum" id="rover-briefing-title">
               MISSION: HADLEY-APENNINE EXPLORATION
@@ -2336,10 +2471,19 @@ function buildApp() {
 
             <div class="rover-briefing-grid">
               <figure class="rover-briefing-photo">
-                <img
-                  src="/assets/nasa/apollo15-on-moon.jpg"
-                  alt="Astronaut working at the Lunar Roving Vehicle during Apollo 15 at Hadley-Apennine"
-                />
+                <button
+                  type="button"
+                  class="nasa-photo-launch-btn"
+                  data-nasa-photo-id="apollo15-on-moon"
+                  data-nasa-context="APOLLO 15 LUNAR EXPLORATION"
+                  aria-label="View full-resolution NASA photograph: Apollo 15 on the Moon"
+                >
+                  <img
+                    src="/assets/nasa/apollo15-on-moon.jpg"
+                    alt="Astronaut working at the Lunar Roving Vehicle during Apollo 15 at Hadley-Apennine"
+                  />
+                  <span class="nasa-photo-launch-badge" aria-hidden="true">🔍 View in High-Res</span>
+                </button>
                 <figcaption>
                   “During Apollo 15's first lunar surface excursion, the crew worked with the Lunar Roving Vehicle at the Hadley-Apennine landing site.”
                   <strong>Credit: NASA</strong> •
@@ -2353,12 +2497,18 @@ function buildApp() {
 
               <div class="rover-briefing-details">
                 <div class="rover-briefing-box">
-                  <p class="caption-orange">MISSION OBJECTIVE &amp; SCORING (MAX 800 PTS)</p>
+                  <p class="caption-orange">MISSION OBJECTIVE &amp; SCORING (MAX 1,000 PTS)</p>
                   <ul class="intro-highlights-list">
-                    <li><strong>Sample Target: 3</strong> — Collect samples at <strong>01 Elbow Crater</strong>, <strong>02 Spur Crater</strong>, and <strong>03 Hadley Rille</strong> (100 pts each).</li>
-                    <li><strong>Exploration Clues: 3</strong> — Drive over glowing ★ field-note beacons along the trails (50 pts each).</li>
-                    <li><strong>Safe Return:</strong> Drive back to the <strong>Lunar Module</strong> (+100 pts return + 250 pts completion).</li>
+                    <li><strong>Sample Target: 3</strong> — Collect samples at <strong>01 Elbow Crater</strong>, <strong>02 Spur Crater</strong>, and <strong>03 Hadley Rille</strong> (100 pts each = 300 pts).</li>
+                    <li><strong>Exploration Clues: 3</strong> — Drive over glowing ★ field-note beacons along the trails (50 pts each = 150 pts).</li>
+                    <li><strong>Safe Return:</strong> Drive back to the <strong>Lunar Module</strong> (+100 pts return + 250 pts completion = 350 pts).</li>
                   </ul>
+                  <p class="rover-scoring-formula">
+                    <strong>800 BASE POINTS + UP TO 200 TIME-BONUS POINTS = 1,000 MAX POINTS.</strong>
+                  </p>
+                  <p class="rover-time-bonus-note">
+                    ⚡ <em>Complete your mission faster to earn up to 200 bonus points!</em>
+                  </p>
                 </div>
 
                 <div class="rover-briefing-box">
@@ -2376,15 +2526,76 @@ function buildApp() {
               </div>
             </div>
 
-            <div class="rover-modal-card__actions">
-              <button type="button" class="btn btn--secondary" id="btn-rover-briefing-exit">
-                <span>← Exit to Toy Shop</span>
-              </button>
-              <button type="button" class="btn btn--play-mission" id="btn-rover-start-mission">
-                <img src="/assets/icon-play.svg" alt="" class="btn-play-mission__icon" aria-hidden="true" />
-                <span>Start Mission</span>
-              </button>
+            <!-- PLAYER REGISTRATION & MISSION ACTIONS -->
+            <div class="rover-briefing-footer">
+              <div class="rover-registration-box">
+                <div class="rover-registration-field">
+                  <label for="rover-player-name-input" class="rover-registration-label">
+                    <span>Explorer Name</span>
+                  </label>
+                  <div class="rover-registration-input-wrap">
+                    <input
+                      type="text"
+                      id="rover-player-name-input"
+                      class="rover-registration-input"
+                      placeholder="Enter your name"
+                      maxlength="20"
+                      autocomplete="off"
+                      spellcheck="false"
+                      aria-describedby="rover-name-char-count rover-name-error"
+                    />
+                    <span class="rover-registration-counter" id="rover-name-char-count">0/20</span>
+                  </div>
+                  <p class="rover-registration-error" id="rover-name-error" role="alert" hidden></p>
+                </div>
+
+                <div class="rover-modal-card__actions">
+                  <button type="button" class="btn btn--secondary" id="btn-rover-briefing-exit">
+                    <span>← Exit to Toy Shop</span>
+                  </button>
+                  <button type="button" class="btn btn--play-mission" id="btn-rover-start-mission">
+                    <img src="/assets/icon-play.svg" alt="" class="btn-play-mission__icon" aria-hidden="true" />
+                    <span>Start Mission</span>
+                  </button>
+                </div>
+              </div>
             </div>
+          </div>
+        </div>
+
+        <!-- COMPACT LEADERBOARD MODAL OVERLAY OVER BRIEFING SCREEN -->
+        <div class="rover-leaderboard-modal-backdrop" id="rover-leaderboard-modal" hidden>
+          <div class="rover-leaderboard-dialog" role="dialog" aria-modal="true" aria-labelledby="rover-leaderboard-title">
+            <header class="rover-leaderboard-dialog__header">
+              <div class="rover-leaderboard-dialog__title-wrap">
+                <p class="caption-orange">APOLLO 15 LUNAR ROVER MISSION</p>
+                <h3 class="heading-md text-plum" id="rover-leaderboard-title">🏆 Top 5 Explorers</h3>
+              </div>
+              <button
+                type="button"
+                class="rover-leaderboard-close"
+                id="btn-rover-close-leaderboard"
+                aria-label="Close Leaderboard"
+              >
+                ✕
+              </button>
+            </header>
+
+            <div class="rover-leaderboard-dialog__body" id="rover-leaderboard-content">
+              <div class="rover-leaderboard-loading">
+                <span class="rover-spinner" aria-hidden="true"></span>
+                <span>Connecting to mission control leaderboard...</span>
+              </div>
+            </div>
+
+            <footer class="rover-leaderboard-dialog__footer">
+              <button type="button" class="btn-refresh-leaderboard" id="btn-rover-refresh-leaderboard">
+                ⟳ Refresh
+              </button>
+              <button type="button" class="btn btn--primary btn-sm" id="btn-rover-leaderboard-done">
+                Back to Briefing
+              </button>
+            </footer>
           </div>
         </div>
 
@@ -2424,31 +2635,59 @@ function buildApp() {
               Moon explorer! You're doing amazing!
             </p>
 
-            <div class="rover-score-summary">
-              <div class="rover-score-box">
-                <span class="rover-score-box__label">FINAL SCORE</span>
-                <span class="rover-score-box__val" id="rover-complete-score">800 / 800</span>
+            <div class="rover-complete-player-banner">
+              <div class="rover-complete-avatar" aria-hidden="true">🚀</div>
+              <div class="rover-complete-player-info">
+                <span class="rover-complete-player-label">EXPLORER</span>
+                <span class="rover-complete-player-name" id="rover-complete-player-name">Explorer</span>
               </div>
-              <div class="rover-score-box">
-                <span class="rover-score-box__label">BEST SCORE</span>
-                <span class="rover-score-box__val" id="rover-complete-best">800 / 800</span>
-              </div>
-              <div class="rover-score-box">
-                <span class="rover-score-box__label">SAMPLES COLLECTED</span>
-                <span class="rover-score-box__val" id="rover-complete-samples">3 / 3</span>
-              </div>
-              <div class="rover-score-box">
-                <span class="rover-score-box__label">CLUES DISCOVERED</span>
-                <span class="rover-score-box__val" id="rover-complete-clues">3 / 3</span>
+              <div class="rover-complete-rank-badge" id="rover-complete-rank-badge">
+                <span class="rover-complete-rank-text" id="rover-complete-rank-text">RANK #--</span>
               </div>
             </div>
 
-            <div class="rover-briefing-grid">
+            <div class="rover-score-summary">
+              <div class="rover-score-box">
+                <span class="rover-score-box__label">FINAL SCORE</span>
+                <span class="rover-score-box__val" id="rover-complete-score">1,000 / 1,000</span>
+              </div>
+              <div class="rover-score-box">
+                <span class="rover-score-box__label">BASE SCORE</span>
+                <span class="rover-score-box__val" id="rover-complete-base-score">800 / 800</span>
+              </div>
+              <div class="rover-score-box">
+                <span class="rover-score-box__label">TIME BONUS</span>
+                <span class="rover-score-box__val" id="rover-complete-time-bonus">+200 / 200</span>
+              </div>
+              <div class="rover-score-box">
+                <span class="rover-score-box__label">COMPLETION TIME</span>
+                <span class="rover-score-box__val" id="rover-complete-time">00:00</span>
+              </div>
+              <div class="rover-score-box">
+                <span class="rover-score-box__label">BEST SCORE</span>
+                <span class="rover-score-box__val" id="rover-complete-best">1,000 / 1,000</span>
+              </div>
+              <div class="rover-score-box">
+                <span class="rover-score-box__label">SAMPLES</span>
+                <span class="rover-score-box__val" id="rover-complete-samples">3 / 3</span>
+              </div>
+            </div>
+
+            <div class="rover-briefing-grid rover-complete-grid">
               <figure class="rover-briefing-photo">
-                <img
-                  src="/assets/nasa/apollo15-lrv-return-trip.webp"
-                  alt="Apollo 15 Lunar Roving Vehicle on the lunar surface"
-                />
+                <button
+                  type="button"
+                  class="nasa-photo-launch-btn"
+                  data-nasa-photo-id="lrv-apollo15-return"
+                  data-nasa-context="APOLLO 15 HISTORICAL DEBRIEF"
+                  aria-label="View full-resolution NASA photograph: Lunar Roving Vehicle, Apollo 15 Mission"
+                >
+                  <img
+                    src="/assets/nasa/apollo15-lrv-return-trip.webp"
+                    alt="Apollo 15 Lunar Roving Vehicle on the lunar surface"
+                  />
+                  <span class="nasa-photo-launch-badge" aria-hidden="true">🔍 View in High-Res</span>
+                </button>
                 <figcaption>
                   “The Lunar Rover helped the Apollo 15 crew transport geological equipment and collected samples across the lunar surface.”
                   <strong>Credit: NASA/MSFC</strong> •
@@ -2461,6 +2700,16 @@ function buildApp() {
               </figure>
 
               <div class="rover-briefing-details">
+                <div class="rover-briefing-box rover-complete-leaderboard-box">
+                  <div class="rover-complete-leaderboard-header">
+                    <p class="caption-orange">🏆 MISSION LEADERBOARD (TOP 5)</p>
+                    <span class="rover-leaderboard-status" id="rover-complete-submit-status">Recording score...</span>
+                  </div>
+                  <div id="rover-complete-leaderboard-table-wrap">
+                    <!-- Populated dynamically with top 5 rankings -->
+                  </div>
+                </div>
+
                 <div class="rover-briefing-box">
                   <p class="caption-orange">APOLLO 15 HISTORICAL SUMMARY</p>
                   <ul class="intro-highlights-list">
@@ -2829,7 +3078,7 @@ function renderShelfSelection() {
   if (selected.isPlayable) {
     statusPill.textContent =
       state.bestRoverScore > 0
-        ? `FIRST DISCOVERY • PLAYABLE • BEST: ${state.bestRoverScore} / 800 PTS`
+        ? `FIRST DISCOVERY • PLAYABLE • BEST: ${state.bestRoverScore} / 1,000 PTS`
         : 'FIRST DISCOVERY • PLAYABLE MISSION';
     statusPill.className = 'machine-status-pill machine-status-pill--playable';
   } else {
@@ -3260,6 +3509,13 @@ function openNasaPhotoModal(photoId, contextLabel = 'NASA ARCHIVAL PHOTOGRAPH', 
   state.isNasaPhotoZoomed = false;
   state.lastNasaThumbTrigger = triggerEl || null;
 
+  if (state.screen === 'rover-game' && state.roverGame.phase === 'playing') {
+    state.roverWasPlayingBeforePhoto = true;
+    state.roverGame.phase = 'paused';
+  } else {
+    state.roverWasPlayingBeforePhoto = false;
+  }
+
   const backdrop = document.querySelector('#nasa-photo-backdrop');
   const stage = document.querySelector('#nasa-viewer-stage');
   const imgEl = document.querySelector('#nasa-viewer-img');
@@ -3328,10 +3584,17 @@ function toggleNasaPhotoZoom() {
 
 function closeNasaPhotoModal() {
   state.isNasaPhotoOpen = false;
+  state.activeNasaPhotoId = null;
   state.isNasaPhotoZoomed = false;
   const backdrop = document.querySelector('#nasa-photo-backdrop');
   backdrop.classList.remove('is-open');
   backdrop.hidden = true;
+
+  if (state.screen === 'rover-game' && state.roverWasPlayingBeforePhoto) {
+    state.roverWasPlayingBeforePhoto = false;
+    state.roverGame.phase = 'playing';
+    state.roverGame.lastFrameTime = performance.now();
+  }
 
   if (state.lastNasaThumbTrigger && typeof state.lastNasaThumbTrigger.focus === 'function') {
     state.lastNasaThumbTrigger.focus();
@@ -3388,6 +3651,10 @@ function resetRoverMissionState(targetPhase = 'briefing') {
   const g = state.roverGame;
   g.phase = targetPhase;
   g.score = 0;
+  g.baseScore = 0;
+  g.timeBonus = 0;
+  g.finalScore = 0;
+  g.scoreSubmitted = false;
   g.rover.x = 640;
   g.rover.y = 472;
   g.rover.angle = -Math.PI / 2;
@@ -3402,6 +3669,20 @@ function resetRoverMissionState(targetPhase = 'briefing') {
   g.lastFrameTime = performance.now();
   resetRoverKeys();
   hideRoverDiscoveryToast();
+
+  if (targetPhase === 'playing') {
+    g.timer = {
+      startTime: performance.now(),
+      elapsedMs: 0,
+      isRunning: true,
+    };
+  } else {
+    g.timer = {
+      startTime: 0,
+      elapsedMs: 0,
+      isRunning: false,
+    };
+  }
 }
 
 function syncRoverOverlays() {
@@ -3427,19 +3708,313 @@ function syncRoverOverlays() {
   }
 }
 
+function updateNameCharCount(val) {
+  const counter = document.querySelector('#rover-name-char-count');
+  if (counter) {
+    const len = (val || '').length;
+    counter.textContent = `${len}/20`;
+  }
+}
+
+function getRoverElapsedSeconds() {
+  const t = state.roverGame.timer;
+  if (!t) return 0;
+  const runningMs = t.isRunning ? Math.max(0, performance.now() - t.startTime) : 0;
+  return Math.max(0, Math.floor((t.elapsedMs + runningMs) / 1000));
+}
+
+let lastRenderedElapsedSec = -1;
+function updateRoverHudTime() {
+  const timeEl = document.querySelector('#rover-hud-time');
+  if (!timeEl) return;
+  const elapsedSecs = getRoverElapsedSeconds();
+  if (elapsedSecs !== lastRenderedElapsedSec) {
+    lastRenderedElapsedSec = elapsedSecs;
+    timeEl.textContent = formatTime(elapsedSecs);
+  }
+}
+
+/**
+ * Fetch top 5 players from Google Apps Script Web App
+ */
+async function fetchLeaderboard() {
+  try {
+    const res = await fetch(LEADERBOARD_SCRIPT_URL, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (!Array.isArray(data)) return [];
+
+    const parsed = data
+      .filter((row) => row && typeof row === 'object')
+      .map((row) => {
+        const rawScore = row.stoppedAt !== undefined ? row.stoppedAt : row.score;
+        const scoreNum = Number(rawScore);
+        const rawName = typeof row.name === 'string' ? row.name.trim() : '';
+        return {
+          name: rawName,
+          score: Number.isFinite(scoreNum) ? scoreNum : null,
+          timestamp: row.timestamp || null,
+        };
+      })
+      .filter((row) => {
+        if (!row.name || row.name.toLowerCase() === 'name') return false;
+        if (row.score === null || Number.isNaN(row.score)) return false;
+        return true;
+      })
+      .sort((a, b) => b.score - a.score);
+
+    return parsed.slice(0, 5);
+  } catch (err) {
+    console.warn('[ORBITOYS] Could not fetch remote leaderboard:', err);
+    return null;
+  }
+}
+
+/**
+ * Submit player score to Google Apps Script Web App
+ * Payload format preserves: { name: playerName, stoppedAt: finalScore, diff: 'Score' }
+ */
+async function submitScoreToLeaderboard(playerName, finalScore) {
+  try {
+    const payload = {
+      name: String(playerName || 'Explorer').trim().slice(0, 20),
+      stoppedAt: Number(finalScore) || 0,
+      diff: 'Score',
+    };
+    const res = await fetch(LEADERBOARD_SCRIPT_URL, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('[ORBITOYS] Could not submit score to remote leaderboard:', err);
+    return false;
+  }
+}
+
+function renderLeaderboardRows(data, currentPlayerName, currentFinalScore = null) {
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    return `
+      <div class="rover-leaderboard-empty">
+        <p>No mission records yet. Be the first explorer to record a score!</p>
+      </div>
+    `;
+  }
+
+  const top5 = data.slice(0, 5);
+  const rowsHtml = top5
+    .map((item, idx) => {
+      const rank = idx + 1;
+      const rankMedal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+      const isPlayer =
+        currentPlayerName &&
+        item.name.toLowerCase() === currentPlayerName.toLowerCase() &&
+        (currentFinalScore === null || item.score === currentFinalScore);
+
+      return `
+        <tr class="rover-leaderboard-row ${isPlayer ? 'is-current-player' : ''}">
+          <td class="rover-lb-rank"><span class="rover-lb-rank-badge">${rankMedal}</span></td>
+          <td class="rover-lb-name">
+            <strong>${escapeHtml(item.name)}</strong>
+            ${isPlayer ? '<span class="rover-lb-you-badge">YOU</span>' : ''}
+          </td>
+          <td class="rover-lb-score">${item.score} <span class="rover-lb-pts">PTS</span></td>
+        </tr>
+      `;
+    })
+    .join('');
+
+  return `
+    <table class="rover-leaderboard-table" aria-label="Apollo 15 Top 5 Mission Scores">
+      <thead>
+        <tr>
+          <th scope="col">Rank</th>
+          <th scope="col">Explorer</th>
+          <th scope="col">Score</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+    </table>
+  `;
+}
+
+function renderCompleteLeaderboardTable(data, playerName, finalScore) {
+  const container = document.querySelector('#rover-complete-leaderboard-table-wrap');
+  if (!container) return;
+  container.innerHTML = renderLeaderboardRows(data, playerName, finalScore);
+  updateDebriefPlayerRank(data, playerName, finalScore);
+}
+
+function updateDebriefPlayerRank(data, playerName, finalScore) {
+  const rankText = document.querySelector('#rover-complete-rank-text');
+  if (!rankText) return;
+
+  if (!data || !Array.isArray(data) || data.length === 0) {
+    rankText.textContent = 'RANK #1';
+    return;
+  }
+
+  const idx = data.findIndex(
+    (item) => item.name.toLowerCase() === (playerName || '').toLowerCase() && item.score === finalScore
+  );
+  if (idx !== -1) {
+    const rankNum = idx + 1;
+    rankText.textContent = rankNum === 1 ? '🥇 #1 CHAMPION' : `RANK #${rankNum}`;
+  } else {
+    if (finalScore >= (data[0]?.score || 0)) {
+      rankText.textContent = 'TOP SCORE!';
+    } else {
+      rankText.textContent = 'SCORE SUBMITTED';
+    }
+  }
+}
+
+function openRoverLeaderboardModal() {
+  const modal = document.querySelector('#rover-leaderboard-modal');
+  if (!modal) return;
+  modal.hidden = false;
+
+  const content = document.querySelector('#rover-leaderboard-content');
+  const currentName = (
+    document.querySelector('#rover-player-name-input')?.value ||
+    state.roverGame.playerName ||
+    ''
+  ).trim();
+
+  if (state.roverGame.cachedLeaderboard && state.roverGame.cachedLeaderboard.length > 0) {
+    if (content) {
+      content.innerHTML = renderLeaderboardRows(state.roverGame.cachedLeaderboard, currentName);
+    }
+  } else {
+    if (content) {
+      content.innerHTML = `
+        <div class="rover-leaderboard-loading">
+          <span class="rover-spinner" aria-hidden="true"></span>
+          <span>Connecting to mission control leaderboard...</span>
+        </div>
+      `;
+    }
+  }
+
+  refreshRoverLeaderboardModal();
+  const closeBtn = document.querySelector('#btn-rover-close-leaderboard');
+  if (closeBtn) closeBtn.focus();
+}
+
+function closeRoverLeaderboardModal() {
+  const modal = document.querySelector('#rover-leaderboard-modal');
+  if (!modal || modal.hidden) return;
+  modal.hidden = true;
+  const triggerBtn = document.querySelector('#btn-rover-open-leaderboard');
+  if (triggerBtn) triggerBtn.focus();
+}
+
+async function refreshRoverLeaderboardModal() {
+  const content = document.querySelector('#rover-leaderboard-content');
+  const currentName = (
+    document.querySelector('#rover-player-name-input')?.value ||
+    state.roverGame.playerName ||
+    ''
+  ).trim();
+
+  const data = await fetchLeaderboard();
+  if (data) {
+    state.roverGame.cachedLeaderboard = data;
+    if (content) {
+      content.innerHTML = renderLeaderboardRows(data, currentName);
+    }
+  } else {
+    if (content && (!state.roverGame.cachedLeaderboard || state.roverGame.cachedLeaderboard.length === 0)) {
+      content.innerHTML = `
+        <div class="rover-leaderboard-error">
+          <p>⚠️ Mission control connection offline.</p>
+          <p class="rover-leaderboard-hint">Local best scores remain saved.</p>
+        </div>
+      `;
+    }
+  }
+}
+
 function openLunarRoverMission() {
   state.selectedMachineId = 'lrv';
   state.bestRoverScore = loadBestMissionScore();
   resetRoverMissionState('briefing');
   syncRoverOverlays();
   updateRoverHud();
+
+  const nameInput = document.querySelector('#rover-player-name-input');
+  if (nameInput) {
+    const saved = state.roverGame.playerName || loadSavedExplorerName();
+    nameInput.value = saved;
+    updateNameCharCount(saved);
+  }
+  const errorEl = document.querySelector('#rover-name-error');
+  if (errorEl) errorEl.hidden = true;
+
+  fetchLeaderboard().then((data) => {
+    if (data) {
+      state.roverGame.cachedLeaderboard = data;
+    }
+  });
+
   navigateToScreen('rover-game');
   startRoverGameLoop();
   requestAnimationFrame(() => {
     drawRoverWorld();
-    const startBtn = document.querySelector('#btn-rover-start-mission');
-    if (startBtn) startBtn.focus();
+    if (nameInput && !nameInput.value) {
+      nameInput.focus();
+    } else {
+      const startBtn = document.querySelector('#btn-rover-start-mission');
+      if (startBtn) startBtn.focus();
+    }
   });
+}
+
+function handleStartRoverMissionClick() {
+  const nameInput = document.querySelector('#rover-player-name-input');
+  const errorEl = document.querySelector('#rover-name-error');
+  const raw = (nameInput?.value || '').trim();
+
+  if (!raw) {
+    if (errorEl) {
+      errorEl.textContent = 'Please enter your explorer name before starting the mission.';
+      errorEl.hidden = false;
+    }
+    if (nameInput) {
+      nameInput.classList.add('is-invalid');
+      nameInput.focus();
+    }
+    return;
+  }
+
+  const clean = raw.slice(0, 20).trim();
+  if (!clean) {
+    if (errorEl) {
+      errorEl.textContent = 'Please enter a valid explorer name.';
+      errorEl.hidden = false;
+    }
+    if (nameInput) {
+      nameInput.classList.add('is-invalid');
+      nameInput.focus();
+    }
+    return;
+  }
+
+  if (errorEl) errorEl.hidden = true;
+  if (nameInput) nameInput.classList.remove('is-invalid');
+
+  state.roverGame.playerName = clean;
+  saveExplorerName(clean);
+
+  closeRoverLeaderboardModal();
+  startRoverMissionRun();
 }
 
 function startRoverMissionRun() {
@@ -3455,6 +4030,11 @@ function pauseRoverMission() {
   if (state.screen !== 'rover-game' || state.roverGame.phase !== 'playing') return;
   audioSystem.playClick();
   state.roverGame.phase = 'paused';
+  const t = state.roverGame.timer;
+  if (t && t.isRunning) {
+    t.elapsedMs += Math.max(0, performance.now() - t.startTime);
+    t.isRunning = false;
+  }
   resetRoverKeys();
   syncRoverOverlays();
   const resumeBtn = document.querySelector('#btn-rover-resume');
@@ -3466,6 +4046,11 @@ function resumeRoverMission() {
   audioSystem.playClick();
   state.roverGame.phase = 'playing';
   state.roverGame.lastFrameTime = performance.now();
+  const t = state.roverGame.timer;
+  if (t && !t.isRunning) {
+    t.startTime = performance.now();
+    t.isRunning = true;
+  }
   syncRoverOverlays();
   startRoverGameLoop();
 }
@@ -3479,11 +4064,30 @@ function restartRoverMission() {
   startRoverGameLoop();
 }
 
+function playAgainRoverMission() {
+  audioSystem.playClick();
+  state.roverGame.scoreSubmitted = false;
+  resetRoverMissionState('briefing');
+  syncRoverOverlays();
+  updateRoverHud();
+  drawRoverWorld();
+
+  const nameInput = document.querySelector('#rover-player-name-input');
+  if (nameInput) {
+    const name = state.roverGame.playerName || loadSavedExplorerName();
+    nameInput.value = name;
+    updateNameCharCount(name);
+  }
+  const startBtn = document.querySelector('#btn-rover-start-mission');
+  if (startBtn) startBtn.focus();
+}
+
 function exitRoverMissionToShop() {
   audioSystem.playClick();
   stopRoverGameLoop();
   resetRoverKeys();
   hideRoverDiscoveryToast();
+  closeRoverLeaderboardModal();
   state.selectedMachineId = 'lrv';
   navigateToScreen('shelf');
 }
@@ -3618,6 +4222,7 @@ function startRoverGameLoop() {
 
     if (state.roverGame.phase === 'playing') {
       updateRoverWorld(dt, gpState);
+      updateRoverHudTime();
       drawRoverWorld();
     }
     state.roverGame.rafId = requestAnimationFrame(step);
@@ -3649,6 +4254,7 @@ function showRoverDiscoveryToast({
   pointsText,
   fact,
   photo = null,
+  photoId = null,
 }) {
   const toast = document.querySelector('#rover-discovery-toast');
   if (!toast) return;
@@ -3661,6 +4267,7 @@ function showRoverDiscoveryToast({
   const mediaWrap = document.querySelector('#rover-toast-media');
   const imgEl = document.querySelector('#rover-toast-img');
   const rilleArtEl = document.querySelector('#rover-toast-rille-art');
+  const toastPhotoBtn = document.querySelector('#btn-rover-toast-photo');
   const captionEl = document.querySelector('#rover-toast-caption');
   const metaEl = document.querySelector('#rover-toast-meta');
   const creditEl = document.querySelector('#rover-toast-credit');
@@ -3674,8 +4281,13 @@ function showRoverDiscoveryToast({
       imgEl.src = photo.src;
       imgEl.alt = photo.caption;
       rilleArtEl.hidden = true;
+      if (toastPhotoBtn) {
+        toastPhotoBtn.hidden = false;
+        toastPhotoBtn.dataset.nasaPhotoId = photo.id || photoId || '';
+      }
     } else {
       imgEl.hidden = true;
+      if (toastPhotoBtn) toastPhotoBtn.hidden = true;
       rilleArtEl.hidden = false;
     }
     captionEl.hidden = false;
@@ -3720,7 +4332,11 @@ function updateRoverHud() {
   if (cluesEl) cluesEl.textContent = `${cluesCount} / ${LRV_MISSION_CLUES.length}`;
   if (bestEl) bestEl.textContent = String(state.bestRoverScore);
   if (briefingBestPill) {
-    briefingBestPill.textContent = `BEST SCORE: ${state.bestRoverScore} / 800 PTS`;
+    briefingBestPill.textContent = `BEST SCORE: ${state.bestRoverScore} / 1,000 PTS`;
+  }
+  const timeEl = document.querySelector('#rover-hud-time');
+  if (timeEl) {
+    timeEl.textContent = formatTime(getRoverElapsedSeconds());
   }
 
   if (objectiveEl) {
@@ -3793,9 +4409,22 @@ function completeRoverMission() {
   stopRoverGameLoop();
   resetRoverKeys();
 
+  // Stop timer and calculate total elapsed seconds
+  const t = g.timer;
+  if (t && t.isRunning) {
+    t.elapsedMs += Math.max(0, performance.now() - t.startTime);
+    t.isRunning = false;
+  }
+  const totalElapsedSecs = Math.max(0, Math.floor((t?.elapsedMs || 0) / 1000));
+  const timeFormatted = formatTime(totalElapsedSecs);
+
   // Safe Return to Lunar Module (+100 pts) + Mission Completion (+250 pts) = +350 pts
   g.score += 350;
-  state.bestRoverScore = saveBestMissionScore(g.score);
+  g.baseScore = g.score; // Maximum 800 base points
+  g.timeBonus = calculateTimeBonus(totalElapsedSecs); // Up to 200 time bonus points
+  g.finalScore = g.baseScore + g.timeBonus; // Up to 1,000 max points
+
+  state.bestRoverScore = saveBestMissionScore(g.finalScore);
 
   audioSystem.playMissionComplete();
   hideRoverDiscoveryToast();
@@ -3805,14 +4434,61 @@ function completeRoverMission() {
   // Populate Mission Complete Debrief modal
   const msgIndex =
     (g.collectedClues.size + Math.floor(g.score / 100)) % LRV_ENCOURAGING_MESSAGES.length;
-  document.querySelector('#rover-complete-encouragement').textContent =
-    LRV_ENCOURAGING_MESSAGES[msgIndex];
-  document.querySelector('#rover-complete-score').textContent = `${g.score} / 800`;
-  document.querySelector('#rover-complete-best').textContent = `${state.bestRoverScore} / 800`;
-  document.querySelector('#rover-complete-samples').textContent =
-    `${g.collectedSamples.size} / ${LRV_MISSION_LOCATIONS.length}`;
-  document.querySelector('#rover-complete-clues').textContent =
-    `${g.collectedClues.size} / ${LRV_MISSION_CLUES.length}`;
+  const encouragementEl = document.querySelector('#rover-complete-encouragement');
+  if (encouragementEl) {
+    encouragementEl.textContent = LRV_ENCOURAGING_MESSAGES[msgIndex];
+  }
+
+  const playerNameEl = document.querySelector('#rover-complete-player-name');
+  if (playerNameEl) {
+    playerNameEl.textContent = g.playerName || 'Explorer';
+  }
+
+  const scoreEl = document.querySelector('#rover-complete-score');
+  if (scoreEl) scoreEl.textContent = `${g.finalScore} / 1,000`;
+
+  const baseScoreEl = document.querySelector('#rover-complete-base-score');
+  if (baseScoreEl) baseScoreEl.textContent = `${g.baseScore} / 800`;
+
+  const timeBonusEl = document.querySelector('#rover-complete-time-bonus');
+  if (timeBonusEl) timeBonusEl.textContent = `+${g.timeBonus} / 200 PTS`;
+
+  const timeEl = document.querySelector('#rover-complete-time');
+  if (timeEl) timeEl.textContent = timeFormatted;
+
+  const bestEl = document.querySelector('#rover-complete-best');
+  if (bestEl) bestEl.textContent = `${state.bestRoverScore} / 1,000`;
+
+  const samplesEl = document.querySelector('#rover-complete-samples');
+  if (samplesEl) {
+    samplesEl.textContent = `${g.collectedSamples.size} / ${LRV_MISSION_LOCATIONS.length}`;
+  }
+
+  const cluesEl = document.querySelector('#rover-complete-clues');
+  if (cluesEl) {
+    cluesEl.textContent = `${g.collectedClues.size} / ${LRV_MISSION_CLUES.length}`;
+  }
+
+  // Initial render of cached leaderboard or placeholder
+  renderCompleteLeaderboardTable(g.cachedLeaderboard, g.playerName, g.finalScore);
+
+  // Submit score to Google Sheets once
+  if (!g.scoreSubmitted) {
+    g.scoreSubmitted = true;
+    const submitStatusEl = document.querySelector('#rover-complete-submit-status');
+    if (submitStatusEl) submitStatusEl.textContent = 'Submitting score to mission control...';
+
+    submitScoreToLeaderboard(g.playerName, g.finalScore).then(async (ok) => {
+      if (submitStatusEl) {
+        submitStatusEl.textContent = ok ? '✓ Score recorded on leaderboard!' : 'Score recorded locally.';
+      }
+      const updatedLeaderboard = await fetchLeaderboard();
+      if (updatedLeaderboard) {
+        g.cachedLeaderboard = updatedLeaderboard;
+        renderCompleteLeaderboardTable(updatedLeaderboard, g.playerName, g.finalScore);
+      }
+    });
+  }
 
   syncRoverOverlays();
   const playAgainBtn = document.querySelector('#btn-rover-play-again');
@@ -4729,6 +5405,13 @@ function bindEvents() {
     openLunarRoverMission();
   });
 
+  document.querySelector('#btn-shelf-exit-game').addEventListener('click', () => {
+    audioSystem.playClick();
+    state.dialogueIndex = 0;
+    renderDialogue();
+    navigateToScreen('title');
+  });
+
   // Screen 6: Machine Introduction navigation & zoom
   document.querySelector('#btn-discovery-back-shelf').addEventListener('click', () => {
     audioSystem.playClick();
@@ -4784,15 +5467,62 @@ function bindEvents() {
   });
 
   // Screen 8: Playable Lunar Rover Mission controls & overlays
-  document.querySelector('#btn-rover-start-mission').addEventListener('click', () => {
-    startRoverMissionRun();
+  const playerNameInput = document.querySelector('#rover-player-name-input');
+  if (playerNameInput) {
+    playerNameInput.addEventListener('input', (e) => {
+      const val = e.target.value;
+      updateNameCharCount(val);
+      if (val.trim()) {
+        playerNameInput.classList.remove('is-invalid');
+        const errorEl = document.querySelector('#rover-name-error');
+        if (errorEl) errorEl.hidden = true;
+      }
+    });
+
+    playerNameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleStartRoverMissionClick();
+      }
+    });
+  }
+
+  document.querySelector('#btn-rover-start-mission')?.addEventListener('click', () => {
+    handleStartRoverMissionClick();
   });
 
-  document.querySelector('#btn-rover-briefing-exit').addEventListener('click', () => {
+  document.querySelector('#btn-rover-open-leaderboard')?.addEventListener('click', () => {
+    audioSystem.playClick();
+    openRoverLeaderboardModal();
+  });
+
+  document.querySelector('#btn-rover-close-leaderboard')?.addEventListener('click', () => {
+    audioSystem.playClick();
+    closeRoverLeaderboardModal();
+  });
+
+  document.querySelector('#btn-rover-leaderboard-done')?.addEventListener('click', () => {
+    audioSystem.playClick();
+    closeRoverLeaderboardModal();
+  });
+
+  document.querySelector('#btn-rover-refresh-leaderboard')?.addEventListener('click', () => {
+    audioSystem.playClick();
+    refreshRoverLeaderboardModal();
+  });
+
+  document.querySelector('#rover-leaderboard-modal')?.addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) {
+      audioSystem.playClick();
+      closeRoverLeaderboardModal();
+    }
+  });
+
+  document.querySelector('#btn-rover-briefing-exit')?.addEventListener('click', () => {
     exitRoverMissionToShop();
   });
 
-  document.querySelector('#btn-rover-pause').addEventListener('click', () => {
+  document.querySelector('#btn-rover-pause')?.addEventListener('click', () => {
     if (state.roverGame.phase === 'playing') {
       pauseRoverMission();
     } else if (state.roverGame.phase === 'paused') {
@@ -4800,23 +5530,23 @@ function bindEvents() {
     }
   });
 
-  document.querySelector('#btn-rover-resume').addEventListener('click', () => {
+  document.querySelector('#btn-rover-resume')?.addEventListener('click', () => {
     resumeRoverMission();
   });
 
-  document.querySelector('#btn-rover-restart').addEventListener('click', () => {
+  document.querySelector('#btn-rover-restart')?.addEventListener('click', () => {
     restartRoverMission();
   });
 
-  document.querySelector('#btn-rover-exit').addEventListener('click', () => {
+  document.querySelector('#btn-rover-exit')?.addEventListener('click', () => {
     exitRoverMissionToShop();
   });
 
-  document.querySelector('#btn-rover-play-again').addEventListener('click', () => {
-    restartRoverMission();
+  document.querySelector('#btn-rover-play-again')?.addEventListener('click', () => {
+    playAgainRoverMission();
   });
 
-  document.querySelector('#btn-rover-complete-shop').addEventListener('click', () => {
+  document.querySelector('#btn-rover-complete-shop')?.addEventListener('click', () => {
     exitRoverMissionToShop();
   });
 
@@ -5033,6 +5763,31 @@ function bindEvents() {
     }
   });
 
+  // Delegated photo launch handlers for briefing, debrief, and rover toast
+  document.addEventListener('click', (e) => {
+    const launchBtn = e.target.closest('.nasa-photo-launch-btn');
+    if (launchBtn && launchBtn.dataset.nasaPhotoId) {
+      audioSystem.playClick();
+      openNasaPhotoModal(
+        launchBtn.dataset.nasaPhotoId,
+        launchBtn.dataset.nasaContext || 'NASA ARCHIVAL PHOTOGRAPH',
+        launchBtn
+      );
+      return;
+    }
+
+    const toastPhotoBtn = e.target.closest('#btn-rover-toast-photo');
+    if (toastPhotoBtn && toastPhotoBtn.dataset.nasaPhotoId) {
+      audioSystem.playClick();
+      openNasaPhotoModal(
+        toastPhotoBtn.dataset.nasaPhotoId,
+        'LUNAR SURFACE SAMPLE DISCOVERY',
+        toastPhotoBtn
+      );
+      return;
+    }
+  });
+
   // Global Keyboard Navigation & Lunar Rover Driving Controls
   const ROVER_KEY_MAP = {
     ArrowUp: 'up',
@@ -5070,6 +5825,31 @@ function bindEvents() {
         e.preventDefault();
         audioSystem.playClick();
         closeNasaPhotoModal();
+        return;
+      }
+
+      if (e.key === 'Tab') {
+        const modal = document.querySelector('.nasa-viewer-modal');
+        if (modal) {
+          const focusables = modal.querySelectorAll(
+            'button:not([disabled]), [href]:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          );
+          if (focusables.length > 0) {
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (e.shiftKey) {
+              if (document.activeElement === first || document.activeElement === modal) {
+                e.preventDefault();
+                last.focus();
+              }
+            } else {
+              if (document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+              }
+            }
+          }
+        }
       }
       return;
     }
@@ -5085,6 +5865,16 @@ function bindEvents() {
 
     if (state.screen === 'rover-game') {
       const phase = state.roverGame.phase;
+      const lbModal = document.querySelector('#rover-leaderboard-modal');
+      if (lbModal && !lbModal.hidden) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          audioSystem.playClick();
+          closeRoverLeaderboardModal();
+          return;
+        }
+      }
+
       if (e.key === 'Escape') {
         e.preventDefault();
         if (phase === 'playing') {
@@ -5161,6 +5951,14 @@ function bindEvents() {
         renderDialogue();
       }
     } else if (state.screen === 'shelf') {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        audioSystem.playClick();
+        state.dialogueIndex = 0;
+        renderDialogue();
+        navigateToScreen('title');
+        return;
+      }
       if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
         e.preventDefault();
         const currentIndex = SHELF_MACHINES.findIndex((m) => m.id === state.selectedMachineId);
@@ -5184,6 +5982,14 @@ function bindEvents() {
       const num = Number(e.key);
       if (num >= 1 && num <= machine.components.length) {
         selectMachineComponent(machine.components[num - 1].id);
+      }
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      if (state.screen === 'rover-game' && state.roverGame.phase === 'playing') {
+        pauseRoverMission();
       }
     }
   });

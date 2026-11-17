@@ -381,27 +381,56 @@ button:disabled {
   outline-color: var(--color-amber);
 }
 
-/* Prominent Play Lunar Rover Mission Button (LRV Only) */
+/* Prominent Play Lunar Rover Mission Button (LRV Only) with Continuous Pulse */
 .btn--play-mission {
   background-color: var(--color-yellow);
   color: var(--color-plum);
   border: 3px solid var(--color-yellow-stroke);
   box-shadow: var(--shadow-start-btn);
+  animation: pulsePlayMission 1.8s ease-in-out infinite;
+  will-change: transform, box-shadow;
+}
+
+@keyframes pulsePlayMission {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 10px 2px rgba(255, 230, 107, 0.8),
+                0 0 24px 6px rgba(255, 211, 79, 0.55),
+                0 4px 12px rgba(41, 34, 56, 0.28);
+  }
+  50% {
+    transform: scale(1.045);
+    box-shadow: 0 0 18px 5px rgba(255, 230, 107, 0.95),
+                0 0 36px 10px rgba(255, 211, 79, 0.75),
+                0 0 54px 14px rgba(255, 182, 56, 0.45),
+                0 6px 18px rgba(41, 34, 56, 0.32);
+  }
 }
 
 .btn--play-mission:hover {
   background-color: #ffe285;
-  transform: translateY(-2px) scale(1.03);
+  transform: translateY(-2px) scale(1.06);
+  box-shadow: 0 0 22px 6px rgba(255, 230, 107, 1),
+              0 0 42px 12px rgba(255, 211, 79, 0.85),
+              0 6px 20px rgba(41, 34, 56, 0.36);
+  animation-play-state: paused;
 }
 
 .btn--play-mission:active {
-  transform: translateY(1px) scale(0.97);
+  transform: translateY(1px) scale(0.98);
   box-shadow: var(--shadow-btn-pressed);
+  animation-play-state: paused;
 }
 
 .btn-play-mission__icon {
   width: 14px;
   height: 16px;
+  transition: transform 0.18s ease;
+}
+
+.btn--play-mission:hover .btn-play-mission__icon {
+  transform: scale(1.15) translateX(2px);
 }
 
 /* View Larger / Zoom Trigger Button */
@@ -988,9 +1017,22 @@ button:disabled {
   gap: 1px;
 }
 
+.shelf-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
 .shelf-header__collection {
   text-align: right;
   flex-shrink: 0;
+}
+
+.btn--shelf-exit {
+  min-height: clamp(34px, 4.2vh, 40px);
+  padding: 0 clamp(12px, 1.2vw, 18px);
+  font-size: clamp(0.85rem, 0.95vw, 0.95rem);
 }
 
 /* Shelf Illustration Stage — Fits 100% inside middle row while preserving exact 1671:941 ratio */
@@ -2157,6 +2199,85 @@ button:disabled {
   flex-shrink: 0;
 }
 
+/* Clickable NASA Photo Launchers (Briefing, Debrief & Rover Toast) */
+.nasa-photo-launch-btn {
+  display: block;
+  width: 100%;
+  position: relative;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 14px 14px 0 0;
+  overflow: hidden;
+  text-align: left;
+}
+
+.nasa-photo-launch-btn:focus-visible {
+  outline: 3px solid var(--color-amber);
+  outline-offset: -3px;
+}
+
+.nasa-photo-launch-badge {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  background-color: rgba(41, 34, 56, 0.88);
+  color: var(--color-amber);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.72rem;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--color-amber);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.36);
+  transition: transform 0.16s ease, background-color 0.16s ease;
+}
+
+.nasa-photo-launch-btn:hover .nasa-photo-launch-badge {
+  transform: scale(1.05);
+  background-color: var(--color-amber);
+  color: var(--color-plum);
+}
+
+.rover-toast-photo-btn {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.rover-toast-photo-btn:focus-visible {
+  outline: 2px solid var(--color-amber);
+  outline-offset: -2px;
+}
+
+.rover-toast-photo-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background-color: rgba(41, 34, 56, 0.85);
+  color: var(--color-amber);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.62rem;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(233, 180, 91, 0.6);
+  pointer-events: none;
+}
+
+.rover-toast-photo-btn:hover .rover-toast-photo-badge {
+  background-color: var(--color-amber);
+  color: var(--color-plum);
+}
+
 /* ==========================================================================
    SCREEN 8: PLAYABLE APOLLO 15 LUNAR ROVER MISSION (#screen-rover-game)
    ========================================================================== */
@@ -2693,6 +2814,419 @@ button:disabled {
   padding-top: 4px;
 }
 
+/* Briefing Top Row Controls */
+.rover-briefing-top-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-rover-leaderboard-trigger {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--color-plum);
+  background: linear-gradient(180deg, #FFFFFF 0%, #F5EADB 100%);
+  border: 1.5px solid var(--color-amber);
+  border-radius: 9999px;
+  padding: 5px 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-rover-leaderboard-trigger:hover {
+  transform: translateY(-1px);
+  border-color: var(--color-orange);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-rover-leaderboard-trigger:active {
+  transform: translateY(0);
+}
+
+/* Scoring Formula & Time Bonus Hints in Briefing Box */
+.rover-scoring-formula {
+  margin-top: 8px;
+  padding: 6px 10px;
+  background-color: rgba(233, 180, 91, 0.18);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  color: var(--color-plum);
+}
+
+.rover-time-bonus-note {
+  margin-top: 4px;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: var(--color-orange);
+  font-weight: 600;
+}
+
+/* Explorer Registration Footer inside Briefing */
+.rover-briefing-footer {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1.5px solid rgba(41, 34, 56, 0.12);
+}
+
+.rover-registration-box {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  background-color: rgba(233, 180, 91, 0.12);
+  border: 1.5px solid rgba(233, 180, 91, 0.45);
+  border-radius: 14px;
+  padding: 8px 12px;
+  width: 100%;
+}
+
+.rover-registration-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 240px;
+}
+
+.rover-registration-label {
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-plum);
+}
+
+.rover-registration-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.rover-registration-input {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--color-plum);
+  background-color: #FFFFFF;
+  border: 2px solid var(--color-surface);
+  border-radius: 10px;
+  padding: 7px 52px 7px 11px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.rover-registration-input:focus {
+  border-color: var(--color-orange);
+  box-shadow: 0 0 0 3px rgba(233, 180, 91, 0.35);
+}
+
+.rover-registration-input.is-invalid {
+  border-color: #C0392B;
+  background-color: #FFF5F5;
+}
+
+.rover-registration-counter {
+  position: absolute;
+  right: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(41, 34, 56, 0.55);
+  pointer-events: none;
+}
+
+.rover-registration-error {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #C0392B;
+  margin: 2px 0 0 0;
+}
+
+/* Compact Leaderboard Popover / Modal Overlay */
+.rover-leaderboard-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background-color: rgba(18, 14, 28, 0.78);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.18s ease-out;
+}
+
+.rover-leaderboard-modal-backdrop[hidden] {
+  display: none !important;
+}
+
+.rover-leaderboard-dialog {
+  width: min(500px, 100%);
+  max-height: calc(100dvh - 36px);
+  background-color: var(--color-cream);
+  color: var(--color-plum);
+  border: 2.5px solid var(--color-amber);
+  border-radius: 20px;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, 0.65), var(--shadow-shelf-hover);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.rover-leaderboard-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background-color: rgba(41, 34, 56, 0.05);
+  border-bottom: 1.5px solid rgba(41, 34, 56, 0.12);
+}
+
+.rover-leaderboard-dialog__title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rover-leaderboard-close {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-plum);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+
+.rover-leaderboard-close:hover {
+  background-color: rgba(41, 34, 56, 0.12);
+}
+
+.rover-leaderboard-dialog__body {
+  padding: 14px 18px;
+  overflow-y: auto;
+  min-height: 180px;
+  max-height: 380px;
+}
+
+.rover-leaderboard-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  background-color: rgba(41, 34, 56, 0.04);
+  border-top: 1.5px solid rgba(41, 34, 56, 0.1);
+}
+
+.btn-refresh-leaderboard {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid rgba(41, 34, 56, 0.22);
+  border-radius: 8px;
+  padding: 5px 12px;
+  color: var(--color-plum);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn-refresh-leaderboard:hover {
+  background-color: rgba(41, 34, 56, 0.08);
+  border-color: var(--color-plum);
+}
+
+/* Leaderboard Tables (Modal & Debrief) */
+.rover-leaderboard-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 4px;
+}
+
+.rover-leaderboard-table th {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(41, 34, 56, 0.6);
+  padding: 4px 10px;
+  text-align: left;
+}
+
+.rover-leaderboard-table th:last-child {
+  text-align: right;
+}
+
+.rover-leaderboard-row {
+  background-color: #FFFFFF;
+  border-radius: 8px;
+  transition: background-color 0.15s ease;
+}
+
+.rover-leaderboard-row td {
+  padding: 7px 10px;
+  font-size: 0.86rem;
+  color: var(--color-plum);
+}
+
+.rover-leaderboard-row td:first-child {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+  width: 54px;
+}
+
+.rover-leaderboard-row td:last-child {
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  text-align: right;
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--color-surface);
+}
+
+.rover-leaderboard-row.is-current-player {
+  background-color: #FFF8E6;
+  outline: 2px solid var(--color-amber);
+}
+
+.rover-lb-you-badge {
+  display: inline-block;
+  background-color: var(--color-orange);
+  color: #FFFFFF;
+  font-size: 0.62rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.rover-lb-rank-badge {
+  font-size: 0.96rem;
+  display: inline-block;
+}
+
+.rover-lb-pts {
+  font-size: 0.68rem;
+  color: rgba(41, 34, 56, 0.6);
+  font-weight: 600;
+}
+
+/* Loading, Error, and Empty States */
+.rover-leaderboard-loading,
+.rover-leaderboard-empty,
+.rover-leaderboard-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 28px 16px;
+  gap: 8px;
+  font-size: 0.86rem;
+  color: rgba(41, 34, 56, 0.75);
+}
+
+.rover-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(41, 34, 56, 0.15);
+  border-top-color: var(--color-orange);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.rover-leaderboard-hint {
+  font-size: 0.76rem;
+  color: rgba(41, 34, 56, 0.55);
+}
+
+/* HUD Time Card */
+.rover-stat-card--time {
+  min-width: 68px;
+}
+.rover-stat-card--time .rover-stat-card__value {
+  color: #FFE5A3;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Debrief Player Banner */
+.rover-complete-player-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(90deg, rgba(41, 34, 56, 0.08) 0%, rgba(233, 180, 91, 0.18) 100%);
+  border: 1.5px solid rgba(233, 180, 91, 0.5);
+  border-radius: 14px;
+  padding: 8px 14px;
+}
+
+.rover-complete-avatar {
+  font-size: 1.4rem;
+}
+
+.rover-complete-player-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.rover-complete-player-label {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-orange);
+}
+
+.rover-complete-player-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-plum);
+}
+
+.rover-complete-rank-badge {
+  background-color: var(--color-surface);
+  color: var(--color-cream);
+  border: 1.5px solid var(--color-amber);
+  border-radius: 9999px;
+  padding: 4px 12px;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* Debrief Leaderboard Box */
+.rover-complete-leaderboard-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rover-complete-leaderboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rover-leaderboard-status {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-orange);
+}
+
 .rover-pause-actions {
   width: 100%;
   display: flex;
@@ -2707,7 +3241,7 @@ button:disabled {
 
 .rover-score-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 8px;
 }
 
@@ -2835,6 +3369,20 @@ button:disabled {
 
   .shelf-header__collection {
     font-size: 0.6rem;
+  }
+
+  .shelf-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .btn--shelf-exit {
+    min-height: 28px;
+    padding: 0 10px;
+    font-size: 0.74rem;
   }
 
   .shelf-first-discovery-badge {
@@ -3117,6 +3665,15 @@ button:disabled {
 
   .rover-score-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rover-registration-box {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rover-complete-player-banner {
+    flex-wrap: wrap;
   }
 
   /* Story & Dialogue mobile adjustments */
